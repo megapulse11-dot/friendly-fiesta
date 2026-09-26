@@ -78,6 +78,34 @@ Notes:
 - The forms only work when the site is served from `http://localhost:8001`. Opened
   straight from disk there is no server to post to, and the page says so.
 
+### Enquiries from the published site
+
+The site on GitHub Pages has no server, so its forms post to a Cloudflare Worker
+instead (see `../worker/README.md`). Because this server only listens on
+loopback, the worker cannot reach it — **this panel pulls instead**. Set two
+environment variables and everything else follows:
+
+```powershell
+$env:NW_WORKER_URL   = 'https://northwind-enquiries.<your-subdomain>.workers.dev'
+$env:NW_WORKER_TOKEN = '<the same INBOX_TOKEN you gave the worker>'
+.\start-admin.cmd your-password
+```
+
+Every time the **Enquiries** tab is read, the server fetches anything it has not
+seen before and merges it into `enquiries.json`. Nothing to click, nothing
+running in the background, and an enquiry that arrived while you were offline is
+picked up on your next visit. Local and public enquiries end up interleaved in
+one inbox, newest first.
+
+With either variable unset the server behaves exactly as before — it just never
+looks for remote enquiries. If the worker is unreachable or the token is wrong
+you get a warning and the inbox is served from the local file as normal, rather
+than the panel failing.
+
+Deleting an enquiry also removes it from the worker, and the id is remembered in
+**`enquiries-removed.json`**, so it cannot reappear on a later pull. Back that
+file up with `enquiries.json` if you care about keeping the two in step.
+
 ## How saving works
 
 Content lives in **`data.json`** — that is the file to back up, or to edit by hand if

@@ -579,14 +579,20 @@ function initDetail() {
  *   2. Anywhere else - the published site on GitHub Pages - there is no server,
  *      so they go to a form service and arrive as an email.
  *
- * Set ONE of these to make the published forms work. Both are free tiers.
+ * Set ONE of these to make the published forms work. All three are free.
+ *
+ *   Cloudflare Worker (recommended) - the one in worker/. Keeps enquiries in
+ *   storage and hands them to the local admin panel, so the public site and the
+ *   panel share a single Enquiries inbox. Paste the worker's /enquiry address
+ *   into ENQUIRY_ENDPOINT below. See worker/README.md.
  *
  *   Web3Forms - no account at all. Type your email into
  *   https://web3forms.com and it shows an access key immediately. Paste it
- *   into ENQUIRY_KEY below. This is the least setup of the three.
+ *   into ENQUIRY_KEY below. Delivers by email only, so these do not reach the
+ *   admin inbox.
  *
  *   Formspree, or any service that accepts a JSON POST - paste the whole URL
- *   into ENQUIRY_ENDPOINT below instead.
+ *   into ENQUIRY_ENDPOINT instead.
  */
 const ENQUIRY_KEY = '';        // Web3Forms, e.g. 'a1b2c3d4-1234-5678-9abc-def012345678'
 const ENQUIRY_ENDPOINT = '';   // Formspree, e.g. 'https://formspree.io/f/abcdefgh'

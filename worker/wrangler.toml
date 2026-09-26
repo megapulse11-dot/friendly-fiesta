@@ -1,0 +1,27 @@
+# Northwind Realty enquiry worker - Cloudflare configuration.
+#
+# Deploy with:
+#   npx wrangler login
+#   npx wrangler kv namespace create ENQUIRIES   # paste the id below
+#   npx wrangler secret put INBOX_TOKEN          # a long random value
+#   npx wrangler deploy
+#
+# The secret is never written to this file or committed. See worker/README.md.
+
+name = "northwind-enquiries"
+main = "src/index.js"
+compatibility_date = "2024-11-06"
+
+# The Pages origin the published site is served from. Kept in step with
+# ALLOWED_ORIGIN in src/index.js.
+[vars]
+ALLOWED_ORIGIN = "https://megapulse11-dot.github.io"
+
+# Create the namespace with `npx wrangler kv namespace create ENQUIRIES` and
+# paste the id it prints. Leaving it empty will make every submission fail.
+[[kv_namespaces]]
+binding = "ENQUIRIES"
+id = "PASTE_THE_KV_NAMESPACE_ID_HERE"
+
+# INBOX_TOKEN is a secret, set with `npx wrangler secret put INBOX_TOKEN`. It
+# must match NW_WORKER_TOKEN in the local admin server's environment.

@@ -14,10 +14,21 @@ Desktop.ini
 node_modules/
 dist/
 
+# Cloudflare Wrangler. The dev config can hold a real account id and the
+# .dev.vars file holds secrets in plain text, so none of it belongs in git.
+worker/.dev.vars
+worker/.dev.vars.*
+worker/.wrangler/
+worker/wrangler.local.toml
+
 # Visitor enquiries from the contact form and the viewing dialog: real names,
 # email addresses, phone numbers and messages. Local only - never commit these.
 enquiries.json
 enquiries.json.corrupt-*
+# Ids deleted from the inbox, so the next pull from the worker does not fetch
+# them back. Same reasoning: these are the residue of real enquiries.
+enquiries-removed.json
+enquiries-removed.json.corrupt-*
 
 # data.js IS committed on purpose. The admin server regenerates it from
 # data.json, but the published site loads data.js directly and is meant to work

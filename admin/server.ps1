@@ -255,6 +255,119 @@ function Save-Enquiries {
     [System.IO.File]::WriteAllText($enquiriesPath, $json, (New-Object System.Text.UTF8Encoding($false)))
 }
 
+# Ids deleted from the inbox, kept separately so a pull does not fetch an
+# enquiry back after it has been deleted. Without this, deleting a spam message
+# would make it reappear on the next refresh.
+$removedPath = Join-Path $Root 'enquiries-removed.json'
+$maxRemoved = 5000
+
+function Read-Removed {
+    if (-not (Test-Path -LiteralPath $removedPath)) { return @() }
+
+    try {
+        $text = [System.IO.File]::ReadAllText($removedPath)
+        if ([string]::IsNullOrWhiteSpace($text)) { return @() }
+        $parsed = $text | ConvertFrom-Json
+    } catch {
+        $salvage = "$removedPath.corrupt-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        Write-Warning "enquiries-removed.json could not be read; keeping a copy as $(Split-Path -Leaf $salvage) and starting a new list."
+        try { [System.IO.File]::Move($removedPath, $salvage) } catch { }
+        return @()
+    }
+
+    if ($parsed -is [System.Array]) { return @($parsed) }
+    if ($null -ne $parsed.PSObject.Properties['removed']) { return @($parsed.removed) }
+    return @()
+}
+
+function Save-Removed {
+    param([string[]] $Ids)
+
+    $json = @{ removed = @($Ids) } | ConvertTo-Json -Depth 4
+    [System.IO.File]::WriteAllText($removedPath, $json, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+# The published site on GitHub Pages has no server, so its forms post to a
+# Cloudflare Worker instead (see worker/). This server binds to loopback and
+# cannot be reached from the internet, so the worker cannot push to it: the
+# inbox pulls instead.
+#
+# Set NW_WORKER_URL to the worker's origin and NW_WORKER_TOKEN to the same
+# INBOX_TOKEN given to the worker, and enquiries from the public site are
+# merged into the local inbox the next time it is read. Both are optional - with
+# neither set the server behaves exactly as before, serving only the enquiries
+# submitted locally.
+$workerUrl = $env:NW_WORKER_URL
+$workerToken = $env:NW_WORKER_TOKEN
+$workerTimeoutSeconds = 20
+
+function Remove-RemoteEnquiry {
+    param([string] $Id)
+
+    if (-not $workerUrl -or -not $workerToken) { return }
+    $uri = "$($workerUrl.TrimEnd('/'))/enquiry?id=$([uri]::EscapeDataString($Id))"
+    try {
+        $headers = @{ Authorization = "Bearer $workerToken" }
+        $null = Invoke-RestMethod -Uri $uri -Method Delete -Headers $headers -TimeoutSec $workerTimeoutSeconds
+    } catch {
+        # Best effort only. If this fails the enquiry may come back on a later
+        # pull, which is harmless next to blocking the local delete.
+        Write-Warning "Could not remove enquiry $Id from the worker: $($_.Exception.Message)"
+    }
+}
+
+function Sync-RemoteEnquiries {
+    $store = Read-Enquiries
+    $local = @($store.enquiries)
+    $known = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($item in $local) { $null = $known.Add([string](Get-FieldValue $item 'id')) }
+    $removed = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($id in (Read-Removed)) { $null = $removed.Add([string]$id) }
+
+    try {
+        $headers = @{ Authorization = "Bearer $workerToken" }
+        $response = Invoke-RestMethod -Uri "$($workerUrl.TrimEnd('/'))/enquiries" `
+            -Method Get -Headers $headers -TimeoutSec $workerTimeoutSeconds
+    } catch {
+        # The inbox is still readable without the worker, so a network problem
+        # must not take the panel down with it.
+        Write-Warning "Could not reach the enquiry worker: $($_.Exception.Message)"
+        return @{ enquiries = $local }
+    }
+
+    $remote = @()
+    if ($null -ne $response.PSObject.Properties['data'] -and $null -ne $response.data.PSObject.Properties['enquiries']) {
+        $remote = @($response.data.enquiries)
+    }
+
+    # Oldest first, so the newest end up at the top of the inbox where the panel
+    # and the local route both expect them.
+    $ordered = @($remote | Sort-Object { try { [datetime]$_.createdAt } catch { [datetime]::MinValue } } -Descending)
+
+    $added = 0
+    foreach ($item in $ordered) {
+        $id = [string](Get-FieldValue $item 'id')
+        # No id, already held, or deleted on purpose: skip it.
+        if (-not $id -or $known.Contains($id) -or $removed.Contains($id)) { continue }
+        $local = @($item) + $local
+        $null = $known.Add($id)
+        $added++
+    }
+
+    if ($added -gt 0) {
+        if ($local.Count -gt $maxEnquiries) { $local = @($local[0..($maxEnquiries - 1)]) }
+        $store.enquiries = $local
+        Save-Enquiries -Store $store
+        # Spelled out rather than using ?: - the ternary needs PowerShell 7 and
+        # this script supports 5.1.
+        $noun = 'enquiries'
+        if ($added -eq 1) { $noun = 'enquiry' }
+        Write-Verbose "Pulled $added new $noun from the worker."
+    }
+
+    return @{ enquiries = $local }
+}
+
 function Add-Enquiry {
     param($Enquiry)
 
@@ -377,7 +490,14 @@ function Invoke-Api {
             Write-Json -Context $Context -Status 200 -Payload @{ ok = $true; data = (Read-Data) }
         }
         '^/api/enquiries$' {
-            Write-Json -Context $Context -Status 200 -Payload @{ ok = $true; data = (Read-Enquiries) }
+            # Reading the inbox is also when the worker is polled, so the
+            # public site's enquiries arrive without a separate step.
+            if ($workerUrl -and $workerToken) {
+                $data = Sync-RemoteEnquiries
+            } else {
+                $data = Read-Enquiries
+            }
+            Write-Json -Context $Context -Status 200 -Payload @{ ok = $true; data = $data }
         }
         '^/api/enquiry$' {
             $body = Read-Body -Request $Context.Request
@@ -401,6 +521,26 @@ function Invoke-Api {
             if ($Method -eq 'DELETE') {
                 $store.enquiries = @($items | Where-Object { (Get-FieldValue $_ 'id') -ne $id })
                 Save-Enquiries -Store $store
+
+                # Remember the id, or the next pull would fetch it straight
+                # back from the worker.
+                $removed = [System.Collections.Generic.List[string]]::new()
+                foreach ($gone in (Read-Removed)) { $removed.Add([string]$gone) }
+                $removed.Add($id)
+                if ($removed.Count -gt $maxRemoved) {
+                    # Keep the newest ids. Read the tail into its own list
+                    # first, because building a replacement while ranging over
+                    # $removed would read the new, empty one.
+                    $kept = [System.Collections.Generic.List[string]]::new()
+                    foreach ($gone in @($removed.ToArray())[-($maxRemoved - 1)..-1]) { $kept.Add([string]$gone) }
+                    $removed = $kept
+                }
+                Save-Removed -Ids $removed.ToArray()
+
+                # The enquiry may have come from the worker, so take it off
+                # there too. Skipped when it was submitted locally.
+                Remove-RemoteEnquiry -Id $id
+
                 Write-Json -Context $Context -Status 200 -Payload @{ ok = $true }
                 return
             }
@@ -543,12 +683,15 @@ try {
                 continue
             }
 
-            # enquiries.json (and its salvage copies) and data.json are server-side
-            # state sitting in the web root, so the static route below would hand
-            # the whole inbox to anyone who asked for it without a token. 404
-            # rather than 403, so the file simply does not appear to exist.
+            # enquiries.json (and its salvage copies), enquiries-removed.json and
+            # data.json are server-side state sitting in the web root, so the
+            # static route below would hand the whole inbox to anyone who asked
+            # for it without a token. 404 rather than 403, so the file simply
+            # does not appear to exist.
             $fileName = [System.IO.Path]::GetFileName($path)
-            if ($fileName -eq 'enquiries.json' -or $fileName -like 'enquiries.json.corrupt-*' -or $fileName -eq 'data.json') {
+            if ($fileName -eq 'enquiries.json' -or $fileName -like 'enquiries.json.corrupt-*' -or
+                $fileName -eq 'enquiries-removed.json' -or $fileName -like 'enquiries-removed.json.corrupt-*' -or
+                $fileName -eq 'data.json') {
                 $context.Response.StatusCode = 404
                 $context.Response.Close()
                 continue

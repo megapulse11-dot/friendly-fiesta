@@ -46,25 +46,26 @@ favicon.svg        Browser icon
 
 5. **Forms on the published site** — GitHub Pages has no server, so `postEnquiry`
    in `app.js` picks a destination by hostname: on `localhost` it uses the admin
-   server, anywhere else it posts to a form service and the enquiry arrives by
-   email. To switch the public forms on:
+   server, anywhere else it posts to a form service. There are two ways to supply
+   one.
 
-   1. Go to <https://web3forms.com> and type the email address you want enquiries
-      sent to. It shows an access key straight away — there is no account to
-      create and no password.
-   2. Paste the key into `ENQUIRY_KEY` near the top of the enquiries section in
-      `app.js`.
-   3. Commit and push. GitHub Pages rebuilds in about a minute.
+   **A Cloudflare Worker** (in `worker/`) keeps enquiries in storage and hands
+   them to your local admin panel, so the public site and the panel share a
+   single **Enquiries** inbox. This is the one that matches how the rest of the
+   site works. Follow `worker/README.md` — a free Cloudflare account, a KV
+   namespace and one secret is the whole setup.
 
-   Formspree works too, if you already have an account: put the whole
-   `https://formspree.io/f/xxxxxxxx` URL in `ENQUIRY_ENDPOINT` instead. Until
-   one is set the public form says it is not connected rather than pretending to
-   have sent.
+   **Web3Forms** is the alternative if you would rather have enquiries by email
+   and accept that they will not appear in the panel: type your email into
+   <https://web3forms.com> and it shows an access key immediately, with no
+   account to create. Paste the key into `ENQUIRY_KEY` in `app.js`. Formspree
+   also works — put the whole `https://formspree.io/f/xxxxxxxx` URL in
+   `ENQUIRY_ENDPOINT` instead.
 
-   Both forms carry a hidden `botcheck` field, so a bot that completes every
-   field is dropped without an email. Note that a form service delivers by email
-   only; those enquiries do not appear in the local **Enquiries** tab, which
-   stays reserved for the admin server.
+   Either way: commit and push, and GitHub Pages rebuilds in about a minute.
+   Until something is set the public form says it is not connected rather than
+   pretending to have sent. Both forms carry a hidden `botcheck` field, so a bot
+   that completes every field is dropped.
 
 6. **Copy** — the words are realistic but fictional; swap them for your own, including the testimonials.
 
