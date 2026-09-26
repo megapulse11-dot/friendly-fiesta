@@ -1,0 +1,24 @@
+# Normalise line endings so the working tree stays clean.
+# admin/server.ps1 rewrites data.js with LF on every start, so without this Git
+# would report the file as modified every time the server ran.
+* text=auto
+
+*.js   text eol=lf
+*.json text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.svg  text eol=lf
+*.md   text eol=lf
+
+# Windows-native scripts.
+*.ps1  text eol=crlf
+*.cmd  text eol=crlf
+
+# Images are binary - never let Git try to normalise them.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.gif  binary
+*.ico  binary
+*.woff2 binary

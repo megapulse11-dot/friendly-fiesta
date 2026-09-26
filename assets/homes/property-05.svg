@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-label="Low bungalow with a mature garden in golden light">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4dcae" />
+      <stop offset="1" stop-color="#e2b87f" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#sky)" />
+  <circle cx="880" cy="210" r="64" fill="#fff2d2" opacity=".85" />
+  <path d="M0 560c180-40 320 20 520-10s420-60 680-10v260H0Z" fill="#b08d5c" />
+  <path d="M0 620c220-30 380 30 600 0s400-40 600 0v180H0Z" fill="#8fa86a" />
+  <g>
+    <rect x="380" y="430" width="440" height="190" fill="#e6ddc9" />
+    <path d="M350 436 600 300 850 436Z" fill="#8c6b4c" />
+    <rect x="470" y="330" width="70" height="50" fill="#e6ddc9" />
+    <rect x="470" y="330" width="70" height="50" fill="#000" opacity=".06" />
+    <g fill="#5b6b70">
+      <rect x="430" y="480" width="62" height="66" />
+      <rect x="520" y="480" width="62" height="66" />
+      <rect x="700" y="480" width="62" height="66" />
+    </g>
+    <rect x="600" y="480" width="58" height="140" fill="#7d5c42" />
+  </g>
+  <g fill="#4f6b3e">
+    <circle cx="250" cy="500" r="86" />
+    <circle cx="250" cy="500" r="52" fill="#5d7d49" />
+    <circle cx="990" cy="520" r="72" />
+    <circle cx="990" cy="520" r="42" fill="#5d7d49" />
+  </g>
+</svg>

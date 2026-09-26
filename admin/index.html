@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Content admin — Northwind Realty</title>
+    <link rel="stylesheet" href="/admin/admin.css" />
+  </head>
+  <body>
+    <section class="login" id="login" hidden>
+      <form class="login-card" id="login-form" onsubmit="return false;">
+        <h1>Northwind Realty</h1>
+        <p>Sign in to edit the website content.</p>
+        <p class="login-error" id="login-error" hidden></p>
+        <div class="field">
+          <span>Password</span>
+          <input id="password" name="password" type="password" autocomplete="current-password" required />
+        </div>
+        <button class="btn btn--primary" type="submit" style="width:100%;margin-top:16px">Sign in</button>
+      </form>
+    </section>
+
+    <div id="app" hidden>
+      <header class="topbar">
+        <h1>Northwind Realty <small>Content admin</small></h1>
+        <div class="topbar-actions">
+          <span class="save-state" id="save-state">All changes saved</span>
+          <a class="btn btn--secondary" href="/" target="_blank" rel="noopener">View site</a>
+          <a class="btn btn--secondary" id="export" href="/api/export" download="data.json">Export JSON</a>
+          <button class="btn btn--primary" id="save" type="button" disabled>Save changes</button>
+          <button class="btn btn--ghost" id="logout" type="button">Sign out</button>
+        </div>
+      </header>
+
+      <nav class="tabs" role="tablist" aria-label="Sections">
+        <button role="tab" aria-selected="true" data-tab="listings">Listings</button>
+        <button role="tab" aria-selected="false" data-tab="enquiries">Enquiries <span class="tab-badge" id="enquiry-badge" hidden>0</span></button>
+        <button role="tab" aria-selected="false" data-tab="agents">Agents</button>
+        <button role="tab" aria-selected="false" data-tab="offices">Offices</button>
+        <button role="tab" aria-selected="false" data-tab="settings">Site settings</button>
+      </nav>
+
+      <main>
+        <section class="panel" id="panel-listings">
+          <div class="toolbar">
+            <input id="listing-search" type="search" placeholder="Search title, address or city" aria-label="Search listings" />
+            <select id="listing-status" aria-label="Filter by status">
+              <option value="">All statuses</option>
+              <option value="For sale">For sale</option>
+              <option value="For rent">For rent</option>
+              <option value="Sold">Sold</option>
+            </select>
+            <span class="grow"></span>
+            <button class="btn btn--primary" id="new-listing" type="button">New listing</button>
+          </div>
+          <div id="listings-body"></div>
+        </section>
+
+        <section class="panel" id="panel-enquiries" hidden>
+          <div class="panel-head">
+            <div><h2>Enquiries</h2><p>Messages and viewing requests sent from the website.</p></div>
+            <span class="grow"></span>
+            <button class="btn btn--secondary" id="enquiries-archive-read" type="button">Archive read</button>
+            <button class="btn btn--secondary" id="enquiries-refresh" type="button">Refresh</button>
+          </div>
+          <div class="toolbar">
+            <input id="enquiry-search" type="search" placeholder="Search name, email, listing or text" aria-label="Search enquiries" />
+            <select id="enquiry-kind" aria-label="Filter by type">
+              <option value="">Messages and viewings</option>
+              <option value="message">Messages</option>
+              <option value="booking">Viewing requests</option>
+            </select>
+            <select id="enquiry-state" aria-label="Filter by state">
+              <option value="open">Open</option>
+              <option value="unread">Unread</option>
+              <option value="archived">Archived</option>
+              <option value="all">Everything</option>
+            </select>
+          </div>
+          <div id="enquiries-body"></div>
+        </section>
+
+        <section class="panel" id="panel-agents" hidden>
+          <div class="panel-head">
+            <div><h2>Agents</h2><p>These appear on the home page and on every listing.</p></div>
+            <span class="grow"></span>
+            <button class="btn btn--primary" id="new-agent" type="button">New agent</button>
+          </div>
+          <div class="grid" id="agents-body"></div>
+        </section>
+
+        <section class="panel" id="panel-offices" hidden>
+          <div class="panel-head">
+            <div><h2>Offices</h2><p>Shown in the footer of every page and on the contact page.</p></div>
+            <span class="grow"></span>
+            <button class="btn btn--primary" id="new-office" type="button">New office</button>
+          </div>
+          <div class="grid" id="offices-body"></div>
+        </section>
+
+        <section class="panel" id="panel-settings" hidden>
+          <div class="panel-head"><div><h2>Site settings</h2><p>Branding, colours and the words on the home page.</p></div></div>
+          <form id="settings-form" class="form-grid" style="max-width:760px"></form>
+        </section>
+      </main>
+    </div>
+
+    <div class="scrim" id="scrim"></div>
+    <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+      <header class="drawer__head">
+        <h2 id="drawer-title">Edit</h2>
+        <span class="grow"></span>
+        <button class="btn btn--ghost" id="drawer-close" type="button" aria-label="Close">Close</button>
+      </header>
+      <div class="drawer__body" id="drawer-body"></div>
+      <footer class="drawer__foot">
+        <button class="btn btn--primary" id="drawer-apply" type="button">Apply</button>
+        <button class="btn btn--secondary" id="drawer-cancel" type="button">Cancel</button>
+      </footer>
+    </aside>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script>
+      // If admin.js ever fails to load or throws while starting up, show the
+      // reason on the page. Without this the sign-in form would submit natively
+      // and the browser would reload in a loop, with nothing on screen to say why.
+      (function () {
+        var shown = false;
+        function show(text) {
+          if (shown) return;
+          shown = true;
+          var box = document.getElementById('login-error');
+          var app = document.getElementById('app');
+          if (app) app.hidden = true;
+          var login = document.getElementById('login');
+          if (login) login.hidden = false;
+          if (box) { box.textContent = text; box.hidden = false; }
+        }
+        window.addEventListener('error', function (event) {
+          var target = event && event.target;
+          if (target && target !== window) {
+            // A failing <img>/<link> also fires 'error'; only a script that will
+            // not load is worth interrupting the user for.
+            if (target.tagName === 'SCRIPT') show('admin.js could not be loaded. Reload with Ctrl+Shift+R.');
+            return;
+          }
+          var where = '';
+          if (event && event.filename) where = ' (' + String(event.filename).split('/').pop() + ':' + event.lineno + ')';
+          show('Admin script error: ' + (event && event.message ? event.message : 'unknown') + where + '. Reload with Ctrl+Shift+R.');
+        }, true);
+      })();
+    </script>
+    <script src="/admin/admin.js" onerror="document.getElementById('login-error').textContent='admin.js could not be loaded. Reload with Ctrl+Shift+R.';document.getElementById('login-error').hidden=false;"></script>
+  </body>
+</html>
