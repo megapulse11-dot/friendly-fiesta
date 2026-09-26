@@ -23,14 +23,13 @@
     Admin password, held as a SecureString so it is never kept as plain text
     in memory. Pass it a SecureString, for example
     (Read-Host 'Admin password' -AsSecureString), or leave it out and use
-    $env:NW_ADMIN_PASSWORD. Defaults to $env:NW_ADMIN_PASSWORD, then
-    'northwind'.
+    $env:NW_ADMIN_PASSWORD.
+
+    There is no default. The server refuses to start rather than fall back to
+    a password that is published in the source, so one of these must be set.
 
 .EXAMPLE
-    .\admin\server.ps1
-
-.EXAMPLE
-    .\admin\server.ps1 -Port 8080 -Password (Read-Host 'Admin password' -AsSecureString)
+    .\admin\server.ps1 -Password (Read-Host 'Admin password' -AsSecureString)
 
 .EXAMPLE
     $env:NW_ADMIN_PASSWORD = 'my-secret'
@@ -58,13 +57,24 @@ if (-not $Root) {
 $Root = [System.IO.Path]::GetFullPath($Root)
 
 # The password is held as a SecureString. Plain text is only ever read from the
-# environment (or the fallback below) and is dropped as soon as it is copied.
-$script:UsingDefaultPassword = $false
+# environment and is dropped as soon as it is copied.
+#
+# There is deliberately no built-in default. A well-known fallback is a password
+# in every sense: it is in the source, it is in this repository, and anyone who
+# has read either can sign in. Failing closed is the only safe default.
 if (-not $Password -or $Password.Length -eq 0) {
     $plainPassword = $env:NW_ADMIN_PASSWORD
     if ([string]::IsNullOrEmpty($plainPassword)) {
-        $plainPassword = 'northwind'
-        $script:UsingDefaultPassword = $true
+        throw @'
+No admin password was supplied, so the server will not start.
+
+Choose a password, either:
+
+    .\start-admin.cmd your-password
+    powershell -File admin\server.ps1 -Password (Read-Host 'Admin password' -AsSecureString)
+    $env:NW_ADMIN_PASSWORD = 'your-password'; .\admin\server.ps1
+
+'@
     }
     $Password = New-Object System.Security.SecureString
     foreach ($character in $plainPassword.ToCharArray()) { $Password.AppendChar($character) }
@@ -500,7 +510,7 @@ foreach ($hostName in $bound) {
     Write-Host "  Website : http://$hostName`:$Port/" -ForegroundColor Cyan
     Write-Host "  Admin   : http://$hostName`:$Port/admin" -ForegroundColor Cyan
 }
-Write-Host "  Password: $(if ($script:UsingDefaultPassword) { 'northwind  (change it with -Password or $env:NW_ADMIN_PASSWORD)' } else { '(custom)' })" -ForegroundColor DarkGray
+Write-Host "  Password : supplied (kept as a SecureString, never printed)" -ForegroundColor DarkGray
 Write-Host '  Ctrl+C to stop' -ForegroundColor DarkGray
 Write-Host ''
 

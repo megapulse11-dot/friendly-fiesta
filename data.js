@@ -31,9 +31,9 @@ const NORTHWIND = {
                          "featured":  true,
                          "listed":  "2026-08-12",
                          "agentId":  "a1",
-                         "image":  "assets/homes/billboard_reference_style_mockup--1-.png",
+                         "image":  "assets/homes/billboard_reference_style_mockup.png",
                          "images":  [
-                                        "assets/homes/billboard_reference_style_mockup--1-.png",
+                                        "assets/homes/billboard_reference_style_mockup.png",
                                         "assets/homes/billboard_reference_style_mockup.png",
                                         "assets/homes/Cap-wirh-logo.png",
                                         "assets/homes/Tshirt-with-ribbon.png",

@@ -8,30 +8,38 @@ installed beyond Windows PowerShell.
 Double-click `start-admin.cmd` in the parent folder, or from a terminal:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File admin\server.ps1
+.\start-admin.cmd my-secret-password
 ```
 
-Then open:
+Run it with no argument and it prompts for the password instead, without echoing
+what you type. Then open:
 
 - **Website** — <http://localhost:8001/>
 - **Admin** — <http://localhost:8001/admin>
 
-The default password is `northwind`. Change it either way:
+Stop the server with `Ctrl+C` in the same window.
+
+## There is no default password
+
+The server **will not start** without one. An earlier version fell back to
+`northwind`, which meant the admin password was published in this repository and
+in every copy of the template — a default like that is not a convenience, it is a
+published secret.
+
+Supply it one of three ways:
 
 ```powershell
 .\start-admin.cmd my-secret
-$env:NW_ADMIN_PASSWORD = 'my-secret'
-powershell -ExecutionPolicy Bypass -File admin\server.ps1
-```
-
-`-Password` itself is a `SecureString`, so give it a value that is already
-protected instead of plain text:
-
-```powershell
+$env:NW_ADMIN_PASSWORD = 'my-secret'; .\admin\server.ps1
 .\admin\server.ps1 -Password (Read-Host 'Admin password' -AsSecureString)
 ```
 
-Stop the server with `Ctrl+C` in the same window.
+`$env:NW_ADMIN_PASSWORD` is the friendliest of the three: set it once in your
+user environment and every later run picks it up without being typed again.
+
+The password is kept as a `SecureString`, compared byte by byte so its length
+cannot be inferred from how long a sign-in attempt takes, and never printed to
+the console or the sign-in page.
 
 ## What you can change
 
