@@ -44,14 +44,29 @@ favicon.svg        Browser icon
    send them somewhere else as well (a mail handler, CRM, webhook), hook the
    `POST /api/enquiry` route in `admin/server.ps1`.
 
-5. **Forms on the published site** — the site is also published to GitHub Pages,
-   which has no server, so `postEnquiry` in `app.js` picks a destination by
-   hostname. On `localhost` it uses the admin server as above; anywhere else it
-   posts to `ENQUIRY_ENDPOINT` at the top of that section. Set it to a form
-   service (Formspree works with any host; a Cloudflare Worker or Netlify
-   function also fits) and the public forms start delivering. Until it is set,
-   the public form says so rather than pretending to have sent.
-5. **Copy** — the words are realistic but fictional; swap them for your own, including the testimonials.
+5. **Forms on the published site** — GitHub Pages has no server, so `postEnquiry`
+   in `app.js` picks a destination by hostname: on `localhost` it uses the admin
+   server, anywhere else it posts to a form service and the enquiry arrives by
+   email. To switch the public forms on:
+
+   1. Go to <https://web3forms.com> and type the email address you want enquiries
+      sent to. It shows an access key straight away — there is no account to
+      create and no password.
+   2. Paste the key into `ENQUIRY_KEY` near the top of the enquiries section in
+      `app.js`.
+   3. Commit and push. GitHub Pages rebuilds in about a minute.
+
+   Formspree works too, if you already have an account: put the whole
+   `https://formspree.io/f/xxxxxxxx` URL in `ENQUIRY_ENDPOINT` instead. Until
+   one is set the public form says it is not connected rather than pretending to
+   have sent.
+
+   Both forms carry a hidden `botcheck` field, so a bot that completes every
+   field is dropped without an email. Note that a form service delivers by email
+   only; those enquiries do not appear in the local **Enquiries** tab, which
+   stays reserved for the admin server.
+
+6. **Copy** — the words are realistic but fictional; swap them for your own, including the testimonials.
 
 ## Notes
 

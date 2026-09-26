@@ -467,6 +467,8 @@ function initDetail() {
 
     <dialog class="dialog" id="viewing-dialog" aria-labelledby="viewing-title">
       <form class="dialog-shell" id="viewing-form">
+        <!-- Honeypot: hidden from people, filled in by spam bots. -->
+        <input type="text" name="botcheck" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" />
         <header class="dialog-header">
           <div>
             <h2 id="viewing-title">Book a viewing</h2>
@@ -551,7 +553,7 @@ function initDetail() {
         date: fields.get('date'),
         listingId: listing.id,
         listingTitle: listing.title
-      });
+      }, form);
       form.reset();
       dialog.close();
       announce(`Viewing request sent for ${listing.title}`);
@@ -575,15 +577,19 @@ function initDetail() {
  *      /api/enquiry and land in enquiries.json, ready under the Enquiries tab.
  *
  *   2. Anywhere else - the published site on GitHub Pages - there is no server,
- *      so they go to a form service.
+ *      so they go to a form service and arrive as an email.
  *
- * Put your form service endpoint below. Formspree is the default because it
- * works with any host; create a form at https://formspree.io, copy its id
- * (the /f/xxxxxxxx in the endpoint it gives you) and paste the whole URL here.
- * Any endpoint that accepts a JSON POST works - a Cloudflare Worker, a Netlify
- * function, or your own API.
+ * Set ONE of these to make the published forms work. Both are free tiers.
+ *
+ *   Web3Forms - no account at all. Type your email into
+ *   https://web3forms.com and it shows an access key immediately. Paste it
+ *   into ENQUIRY_KEY below. This is the least setup of the three.
+ *
+ *   Formspree, or any service that accepts a JSON POST - paste the whole URL
+ *   into ENQUIRY_ENDPOINT below instead.
  */
-const ENQUIRY_ENDPOINT = '';   // e.g. 'https://formspree.io/f/abcdefgh'
+const ENQUIRY_KEY = '';        // Web3Forms, e.g. 'a1b2c3d4-1234-5678-9abc-def012345678'
+const ENQUIRY_ENDPOINT = '';   // Formspree, e.g. 'https://formspree.io/f/abcdefgh'
 
 const isLocalServer = () =>
   location.hostname === 'localhost' ||
@@ -591,13 +597,25 @@ const isLocalServer = () =>
   location.hostname === '[::1]' ||
   location.protocol === 'file:';
 
-async function postEnquiry(payload) {
+// Resolve the destination, or explain why there isn't one.
+function enquiryTarget() {
+  if (ENQUIRY_KEY) {
+    return { url: 'https://api.web3forms.com/submit', extra: { access_key: ENQUIRY_KEY } };
+  }
+  if (ENQUIRY_ENDPOINT) {
+    return { url: ENQUIRY_ENDPOINT, extra: {} };
+  }
+  return null;
+}
+
+async function postEnquiry(payload, form) {
   // Running from the local admin server: use it.
   if (isLocalServer()) return postToLocalServer(payload);
-  if (!ENQUIRY_ENDPOINT) {
+  const target = enquiryTarget();
+  if (!target) {
     throw new Error('This form is not connected yet. The site owner needs to add a form endpoint in app.js.');
   }
-  return postToFormService(payload);
+  return postToFormService(payload, target, form);
 }
 
 async function postToLocalServer(payload) {
@@ -620,23 +638,35 @@ async function postToLocalServer(payload) {
   return result;
 }
 
-async function postToFormService(payload) {
+async function postToFormService(payload, target, form) {
+  // Fields the services understand, so an enquiry arrives as a readable email
+  // rather than a JSON blob.
+  const body = {
+    ...payload,
+    ...target.extra,
+    from_name: payload.name || 'Website enquiry',
+    replyto: payload.email || ''
+  };
+  // Honeypot: hidden from people, filled in by bots. A bot that completes
+  // every field gets this one too and is silently discarded.
+  const honeypot = form ? $('[name="botcheck"]', form) : null;
+  if (honeypot && honeypot.value.trim()) return { ok: true, discarded: true };
+
   let response;
   try {
-    response = await fetch(ENQUIRY_ENDPOINT, {
+    response = await fetch(target.url, {
       method: 'POST',
-      // Formspree and friends require this header, and because the service is
-      // cross-origin the browser has to be told the content type is acceptable
-      // before it will send it.
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(body)
     });
   } catch {
     throw new Error('The message could not be sent. Please email us instead.');
   }
 
-  if (!response.ok) {
-    throw new Error(`The message could not be sent (${response.status}). Please email us instead.`);
+  let result = {};
+  try { result = await response.json(); } catch { /* empty body is fine */ }
+  if (!response.ok || result.success === false) {
+    throw new Error((result.message ? `${result.message}. ` : '') + 'The message could not be sent. Please email us instead.');
   }
   return { ok: true };
 }
@@ -674,7 +704,7 @@ function initForms() {
         channel: fields.get('channel'),
         message: fields.get('message'),
         updates: fields.get('updates') === 'on'
-      });
+      }, form);
       form.reset();
       announce(`Thanks ${name || 'for getting in touch'} — an agent will reply within one working day.`);
     } catch (problem) {
