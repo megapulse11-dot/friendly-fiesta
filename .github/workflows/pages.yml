@@ -31,64 +31,48 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Assemble the public site only
-        shell: pwsh
+        shell: bash
         run: |
-          $ErrorActionPreference = 'Stop'
-          $site = '_site'
-          New-Item -ItemType Directory -Path $site -Force | Out-Null
+          set -euo pipefail
+          site=_site
+          rm -rf "$site"
+          mkdir -p "$site"
 
           # Pages, scripts and styles that make up the public site.
-          $files = @(
-            'index.html',
-            'properties.html',
-            'property.html',
-            'contact.html',
-            'app.js',
-            'styles.css',
-            'data.js',
-            'favicon.svg'
-          )
-          foreach ($file in $files) {
-            if (-not (Test-Path $file)) { throw "Missing $file - the site would break." }
-            Copy-Item $file $site
-          }
+          for file in index.html properties.html property.html contact.html \
+                      app.js styles.css data.js favicon.svg; do
+            if [ ! -f "$file" ]; then
+              echo "::error::Missing $file - the site would break."
+              exit 1
+            fi
+            cp "$file" "$site/"
+          done
 
           # Property images, including anything uploaded through the panel.
-          Copy-Item 'assets' -Destination $site -Recurse
-
-          # Nothing under admin/ is copied. Fail loudly if that ever changes.
-          if (Test-Path "$site\admin") { throw 'admin/ must never be published.' }
+          cp -R assets "$site/"
 
           # Publish as-is: no Jekyll processing, no underscore directories.
-          New-Item -ItemType File -Path "$site\.nojekyll" -Force | Out-Null
+          touch "$site/.nojekyll"
 
-          Get-ChildItem $site -Recurse -File |
-            Select-Object @{ n = 'path'; e = { $_.FullName.Substring((Resolve-Path $site).Path.Length + 1) } } |
-            Format-Table -HideTableHeaders
+          echo "Publishing:"
+          find "$site" -type f | sed "s|^$site/|  |"
 
       - name: Check nothing sensitive slipped in
-        shell: pwsh
+        shell: bash
         run: |
-          $ErrorActionPreference = 'Stop'
-          $root = (Resolve-Path '_site').Path
-          $bad = @()
-          foreach ($file in Get-ChildItem '_site' -Recurse -File -Force) {
-            # Relative path, matched case-sensitively: an absolute path can
-            # contain "admin" by accident (a user folder, for one) and -match is
-            # case-insensitive, which would flag every file.
-            $relative = $file.FullName.Substring($root.Length + 1)
-            if ($relative -cmatch '(^|\\)(admin|\.git)(\\|$)') { $bad += $relative }
-            elseif ($relative -imatch '^enquiries') { $bad += $relative }
-            elseif ($relative -imatch '^data\.json$') { $bad += $relative }
-            elseif ($relative -imatch '^\.env') { $bad += $relative }
-          }
-          if ($bad) {
-            Write-Error ('Refusing to publish: ' + ($bad -join ', '))
+          set -euo pipefail
+          # Matched against the path relative to _site. An absolute path can
+          # contain "admin" by accident (a checkout directory, for one) and
+          # grep is case-sensitive, so a naive pattern flags everything.
+          bad=$(find _site -type f | sed 's|^_site/||' | \
+                grep -Ei '(^|/)(admin|\.git)(/|$)|(^|/)enquiries|^data\.json$|^\.env' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Refusing to publish:"
+            echo "$bad"
             exit 1
-          }
-          Write-Host 'Clean: no admin, .git, enquiries or data.json in the published site.'
+          fi
+          echo "Clean: no admin, .git, enquiries, data.json or .env published."
 
-      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
