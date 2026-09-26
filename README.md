@@ -43,6 +43,14 @@ favicon.svg        Browser icon
    which files them in `enquiries.json`; read them under the **Enquiries** tab. To
    send them somewhere else as well (a mail handler, CRM, webhook), hook the
    `POST /api/enquiry` route in `admin/server.ps1`.
+
+5. **Forms on the published site** — the site is also published to GitHub Pages,
+   which has no server, so `postEnquiry` in `app.js` picks a destination by
+   hostname. On `localhost` it uses the admin server as above; anywhere else it
+   posts to `ENQUIRY_ENDPOINT` at the top of that section. Set it to a form
+   service (Formspree works with any host; a Cloudflare Worker or Netlify
+   function also fits) and the public forms start delivering. Until it is set,
+   the public form says so rather than pretending to have sent.
 5. **Copy** — the words are realistic but fictional; swap them for your own, including the testimonials.
 
 ## Notes

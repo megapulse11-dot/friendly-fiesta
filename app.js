@@ -566,11 +566,41 @@ function initDetail() {
 }
 
 /* ---- enquiries ----------------------------------------------------------- */
-// The contact form and the viewing dialog post here; the admin panel picks the
-// results up under the Enquiries tab. The README says the site can be opened
-// straight from disk, and a file:// page has no server to talk to - so say that
-// plainly rather than quietly swallowing the enquiry.
+/*
+ * Where a submission is sent.
+ *
+ * Two paths, chosen automatically:
+ *
+ *   1. On localhost the admin server is running, so enquiries go straight to
+ *      /api/enquiry and land in enquiries.json, ready under the Enquiries tab.
+ *
+ *   2. Anywhere else - the published site on GitHub Pages - there is no server,
+ *      so they go to a form service.
+ *
+ * Put your form service endpoint below. Formspree is the default because it
+ * works with any host; create a form at https://formspree.io, copy its id
+ * (the /f/xxxxxxxx in the endpoint it gives you) and paste the whole URL here.
+ * Any endpoint that accepts a JSON POST works - a Cloudflare Worker, a Netlify
+ * function, or your own API.
+ */
+const ENQUIRY_ENDPOINT = '';   // e.g. 'https://formspree.io/f/abcdefgh'
+
+const isLocalServer = () =>
+  location.hostname === 'localhost' ||
+  location.hostname === '127.0.0.1' ||
+  location.hostname === '[::1]' ||
+  location.protocol === 'file:';
+
 async function postEnquiry(payload) {
+  // Running from the local admin server: use it.
+  if (isLocalServer()) return postToLocalServer(payload);
+  if (!ENQUIRY_ENDPOINT) {
+    throw new Error('This form is not connected yet. The site owner needs to add a form endpoint in app.js.');
+  }
+  return postToFormService(payload);
+}
+
+async function postToLocalServer(payload) {
   let response;
   try {
     response = await fetch('/api/enquiry', {
@@ -588,6 +618,27 @@ async function postEnquiry(payload) {
     throw new Error(result.error || `The server could not save this (${response.status}).`);
   }
   return result;
+}
+
+async function postToFormService(payload) {
+  let response;
+  try {
+    response = await fetch(ENQUIRY_ENDPOINT, {
+      method: 'POST',
+      // Formspree and friends require this header, and because the service is
+      // cross-origin the browser has to be told the content type is acceptable
+      // before it will send it.
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch {
+    throw new Error('The message could not be sent. Please email us instead.');
+  }
+
+  if (!response.ok) {
+    throw new Error(`The message could not be sent (${response.status}). Please email us instead.`);
+  }
+  return { ok: true };
 }
 
 function lockSubmit(form) {
