@@ -200,7 +200,7 @@ const NORTHWIND = {
                          "lot":  "0.8 acres",
                          "year":  1974,
                          "parking":  2,
-                         "featured":  false,
+                         "featured":  true,
                          "listed":  "2026-05-19",
                          "agentId":  "a3",
                          "image":  "assets/homes/property-05.svg",
@@ -217,7 +217,10 @@ const NORTHWIND = {
                                           "Village location",
                                           "Chain free"
                                       ],
-                         "description":  "Sold in eleven days. A 1970s bungalow on a generous plot with a mature garden, an outbuilding with planning potential, and a village centre within walking distance. Included here as a comparable, not an available home."
+                         "description":  "Sold in eleven days. A 1970s bungalow on a generous plot with a mature garden, an outbuilding with planning potential, and a village centre within walking distance. Included here as a comparable, not an available home.",
+                         "removedPhotos":  [
+
+                                           ]
                      },
                      {
                          "id":  "p7",

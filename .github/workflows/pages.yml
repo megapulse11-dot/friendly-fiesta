@@ -1,0 +1,104 @@
+name: Deploy the public site to GitHub Pages
+
+# The repository holds two different things:
+#   * the public website  - safe to publish
+#   * admin/              - the local editing panel and its PowerShell server,
+#                           which must never be published
+#
+# GitHub Pages would otherwise serve the repository root as-is and expose
+# admin/ to the internet. So this workflow builds the site explicitly, from a
+# list, and nothing else is ever uploaded.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deployments race; queue instead.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble the public site only
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $site = '_site'
+          New-Item -ItemType Directory -Path $site -Force | Out-Null
+
+          # Pages, scripts and styles that make up the public site.
+          $files = @(
+            'index.html',
+            'properties.html',
+            'property.html',
+            'contact.html',
+            'app.js',
+            'styles.css',
+            'data.js',
+            'favicon.svg'
+          )
+          foreach ($file in $files) {
+            if (-not (Test-Path $file)) { throw "Missing $file - the site would break." }
+            Copy-Item $file $site
+          }
+
+          # Property images, including anything uploaded through the panel.
+          Copy-Item 'assets' -Destination $site -Recurse
+
+          # Nothing under admin/ is copied. Fail loudly if that ever changes.
+          if (Test-Path "$site\admin") { throw 'admin/ must never be published.' }
+
+          # Publish as-is: no Jekyll processing, no underscore directories.
+          New-Item -ItemType File -Path "$site\.nojekyll" -Force | Out-Null
+
+          Get-ChildItem $site -Recurse -File |
+            Select-Object @{ n = 'path'; e = { $_.FullName.Substring((Resolve-Path $site).Path.Length + 1) } } |
+            Format-Table -HideTableHeaders
+
+      - name: Check nothing sensitive slipped in
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = (Resolve-Path '_site').Path
+          $bad = @()
+          foreach ($file in Get-ChildItem '_site' -Recurse -File -Force) {
+            # Relative path, matched case-sensitively: an absolute path can
+            # contain "admin" by accident (a user folder, for one) and -match is
+            # case-insensitive, which would flag every file.
+            $relative = $file.FullName.Substring($root.Length + 1)
+            if ($relative -cmatch '(^|\\)(admin|\.git)(\\|$)') { $bad += $relative }
+            elseif ($relative -imatch '^enquiries') { $bad += $relative }
+            elseif ($relative -imatch '^data\.json$') { $bad += $relative }
+            elseif ($relative -imatch '^\.env') { $bad += $relative }
+          }
+          if ($bad) {
+            Write-Error ('Refusing to publish: ' + ($bad -join ', '))
+            exit 1
+          }
+          Write-Host 'Clean: no admin, .git, enquiries or data.json in the published site.'
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
