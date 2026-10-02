@@ -143,6 +143,11 @@ $blockedExtensions = @{
     '.key' = $true; '.pem' = $true; '.pfx' = $true; '.p12' = $true; '.crt' = $true; '.cer' = $true
     '.db' = $true; '.sqlite' = $true; '.sql' = $true; '.mdb' = $true
     '.bak' = $true; '.orig' = $true; '.swp' = $true
+    # Documents and infrastructure config. AGENTS.md and worker/README.md both
+    # describe how the tokens, buckets and tables fit together, and wrangler.toml
+    # names every binding - none of which belongs on the open web, and all of
+    # which is in the repository anyway, so refusing it costs the site nothing.
+    '.md' = $true; '.toml' = $true; '.yml' = $true; '.yaml' = $true; '.lock' = $true
 }
 
 function Write-Json {
@@ -1005,6 +1010,19 @@ try {
             # exactly the sort of thing that must not be reachable over HTTP, so
             # the whole class is refused here rather than one name at a time.
             if (($path.TrimStart('/') -split '/') -match '^\.') {
+                $context.Response.StatusCode = 404
+                $context.Response.Close()
+                continue
+            }
+
+            # The worker is source code, not site content. It is the most sensitive
+            # thing in the web root: lib/auth.js is the password hashing, and the
+            # READMEs describe the token and bucket layout. The pages.yml workflow
+            # already refuses to publish it, so this keeps the local server honest
+            # about the same rule - the folder is refused whole rather than a file
+            # at a time, because a new file added to it should be refused without
+            # anyone remembering to extend a list.
+            if (($path.TrimStart('/') -split '/') -contains 'worker') {
                 $context.Response.StatusCode = 404
                 $context.Response.Close()
                 continue

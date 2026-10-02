@@ -16,6 +16,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import worker from '../src/index.js';
+import { WINDOW_SECONDS, MAX_FAILURES } from '../src/lib/throttle.js';
 
 const ORIGIN = 'https://megapulse11-dot.github.io';
 const INBOX = 'the-office-inbox-token';
@@ -32,7 +33,22 @@ function makeDb() {
     return row && row.agent_id === agentId ? row : undefined;
   };
 
+  const attempts = new Map();
+
   function run(sql, p) {
+    if (sql.indexOf('INSERT INTO signin_attempts') >= 0) {
+      // Mirrors the ON CONFLICT clause in lib/throttle.js: a failure arriving
+      // more than a window after the last one starts the count again.
+      const row = attempts.get(p[0]);
+      const stale = !row || (p[1] - row.last_at) > WINDOW_SECONDS;
+      attempts.set(p[0], { failures: stale ? 1 : row.failures + 1, last_at: p[1] });
+      return { success: true };
+    }
+    if (sql.indexOf('DELETE FROM signin_attempts') >= 0) {
+      attempts.delete(p[0]);
+      return { success: true };
+    }
+
     if (sql.indexOf('INSERT INTO agents') >= 0) {
       const row = {
         id: p[0],
@@ -90,6 +106,7 @@ function makeDb() {
   }
 
   function first(sql, p) {
+    if (sql.indexOf('FROM signin_attempts') >= 0) return attempts.get(p[0]) || null;
     if (sql.indexOf('FROM agents WHERE email') >= 0) return findAgent(p[0]);
     if (sql.indexOf('FROM agents WHERE id') >= 0) return agents.get(p[0]);
     if (sql.indexOf('FROM submissions WHERE id = ? AND agent_id = ?') >= 0) {
@@ -436,4 +453,126 @@ test('an unknown agent route does not confirm what exists', async () => {
     headers: { Authorization: 'Bearer ' + token }
   });
   assert.equal(signedIn.status, 404);
+});
+
+/* ---- rate limiting --------------------------------------------------------- */
+
+/** A sign-in attempt from a named client, so the throttle can tell them apart. */
+const signinFrom = (env, ip, email, password) =>
+  call(env, '/agent/signin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip },
+    body: JSON.stringify({ email, password })
+  });
+
+test('a bad password is counted, and the lock only starts once the limit is passed', async () => {
+  const env = makeEnv();
+
+  // MAX_FAILURES attempts are still answered normally - the point of counting
+  // failures is to absorb a person who mistypes, not to refuse the first slip.
+  // The one after that is the lock.
+  for (let attempt = 1; attempt <= MAX_FAILURES; attempt++) {
+    const response = await signinFrom(env, '203.0.113.9', 'ada@example.com', 'not-the-password');
+    assert.equal(response.status, 401, `attempt ${attempt} should still be a plain rejection`);
+  }
+
+  const blocked = await signinFrom(env, '203.0.113.9', 'ada@example.com', 'not-the-password');
+  assert.equal(blocked.status, 429);
+  assert.ok(Number(blocked.headers.get('Retry-After')) > 0, 'a blocked answer says when to come back');
+});
+
+test('the lock does not reveal whether the address has an account', async () => {
+  const env = makeEnv();
+  await register(env, 'ada@example.com');
+
+  // Same address, wrong password. The same shape of answer as an address that
+  // has never signed up - which is what stops the throttle becoming a probe.
+  const known = await signinFrom(env, '203.0.113.10', 'ada@example.com', 'not-the-password');
+  const unknown = await signinFrom(env, '203.0.113.10', 'nobody@example.com', 'not-the-password');
+  assert.equal(known.status, 401);
+  assert.equal(unknown.status, 401);
+  assert.equal((await known.json()).error, (await unknown.json()).error);
+});
+
+test('one client locking out does not lock out the next', async () => {
+  const env = makeEnv();
+  for (let attempt = 0; attempt < MAX_FAILURES + 1; attempt++) {
+    await signinFrom(env, '203.0.113.11', 'ada@example.com', 'not-the-password');
+  }
+
+  const blocked = await signinFrom(env, '203.0.113.11', 'ada@example.com', 'not-the-password');
+  const other = await signinFrom(env, '203.0.113.12', 'ada@example.com', 'not-the-password');
+  assert.equal(blocked.status, 429);
+  assert.equal(other.status, 401);
+});
+
+test('a sign-in that works clears the failures behind it', async () => {
+  const env = makeEnv();
+  await register(env, 'ada@example.com');
+
+  for (let attempt = 0; attempt < MAX_FAILURES - 1; attempt++) {
+    await signinFrom(env, '203.0.113.13', 'ada@example.com', 'not-the-password');
+  }
+
+  const good = await signinFrom(env, '203.0.113.13', 'ada@example.com', 'a-long-enough-password');
+  assert.equal(good.status, 200);
+
+  // The count went back to nothing, so the allowance is whole again rather than
+  // one mistake short of a lockout.
+  for (let attempt = 0; attempt < MAX_FAILURES - 1; attempt++) {
+    const response = await signinFrom(env, '203.0.113.13', 'ada@example.com', 'not-the-password');
+    assert.equal(response.status, 401, `failure ${attempt + 1} after a good sign-in should be a plain rejection`);
+  }
+});
+
+test('the window is a real number of seconds', () => {
+  // The rolling window is measured in wall-clock time, so a test cannot wait it
+  // out. Asserting the constant exists keeps the expiry branch in
+  // checkThrottle() honest about what it compares against.
+  assert.ok(WINDOW_SECONDS > 0);
+  assert.ok(MAX_FAILURES > 1);
+});
+
+test('registration is throttled on the same budget as sign-in', async () => {
+  const env = makeEnv();
+  let last;
+  for (let attempt = 0; attempt < MAX_FAILURES + 1; attempt++) {
+    last = await call(env, '/agent/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.16' },
+      body: JSON.stringify({ email: 'nope', name: 'x', password: 'short' })
+    });
+  }
+  assert.equal(last.status, 429, 'the last attempt should be refused');
+});
+
+test('the throttle fails open when the table is missing', async () => {
+  // Only the throttle's own queries fail - the agents table still answers. A
+  // database that was entirely broken would fail the route for unrelated
+  // reasons and would prove nothing about the throttle.
+  const env = makeEnv();
+  const real = env.DB;
+  env.DB = {
+    prepare(sql) {
+      if (sql.indexOf('signin_attempts') >= 0) {
+        return {
+          bind() {
+            return {
+              first: () => Promise.reject(new Error('no such table: signin_attempts')),
+              run: () => Promise.reject(new Error('no such table: signin_attempts'))
+            };
+          }
+        };
+      }
+      return real.prepare(sql);
+    }
+  };
+
+  // Several failures in a row, so a throttle that did not fail open would have
+  // reached its limit by now.
+  let last;
+  for (let attempt = 0; attempt < MAX_FAILURES + 2; attempt++) {
+    last = await signinFrom(env, '203.0.113.17', 'ada@example.com', 'not-the-password');
+  }
+  assert.equal(last.status, 401, 'a broken throttle must not lock anybody out');
 });

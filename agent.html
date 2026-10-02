@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0f423a" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Content-Security-Policy as a meta tag, because GitHub Pages cannot set
+         response headers. Two directives are deliberately missing: frame-ancestors
+         is ignored in a meta tag and needs a real header, and
+         upgrade-insecure-requests would rewrite http://localhost and break the
+         local server. style-src has no 'unsafe-inline' because the inline style
+         attributes were moved into styles.css - putting one back would weaken
+         this on every page without looking like a mistake. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self' https://api.web3forms.com https://formspree.io; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self' https://api.frankfurter.app https://open.er-api.com https://api.web3forms.com https://formspree.io https://*.workers.dev" />
+    <!-- theme.js resolves the colour theme before first paint, so nobody who
+         asked for dark gets a flash of the light one. It has to be a blocking
+         script in the head, and a separate file rather than inline, so the
+         policy above can keep script-src at 'self'. -->
+    <script src="theme.js"></script>
     <meta name="robots" content="noindex, nofollow" />
     <meta name="description" content="Agent sign in — upload and manage Northwind Realty listings." />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />

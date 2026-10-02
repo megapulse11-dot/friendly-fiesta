@@ -541,6 +541,91 @@ function propertyCard(listing, options = {}) {
     </article>`;
 }
 
+/* ---- theme --------------------------------------------------------------- */
+/*
+ * Light and dark.
+ *
+ * The stylesheet already knows how to do both from `prefers-color-scheme`, so
+ * this does not have to be clever. What it adds is a control: a reader whose
+ * system is light can still ask for dark and have it stick across pages and
+ * across visits.
+ *
+ * The preference is resolved to a concrete `data-theme` rather than left as
+ * "follow the system", so every rule downstream reads one attribute instead of
+ * branching on a media query. A tiny inline script in each page head has already
+ * set that attribute before first paint - this only picks it up, wires the
+ * button, and keeps following the system while the reader has not said otherwise.
+ */
+const THEME_KEY = 'northwind:theme';
+const THEME_META = { light: '#0f423a', dark: '#0d1113' };
+
+const SUN_GLYPH = '<svg class="icon icon--sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.6M12 19.4V22M2 12h2.6M19.4 12H22M4.9 4.9l1.9 1.9M17.2 17.2l1.9 1.9M19.1 4.9l-1.9 1.9M6.8 17.2l-1.9 1.9"/></svg>';
+const MOON_GLYPH = '<svg class="icon icon--moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></svg>';
+
+function initTheme() {
+  const system = window.matchMedia('(prefers-color-scheme: dark)');
+
+  // Read the preference here as well as in the head script. The head script is
+  // what prevents a flash of the wrong theme; this is what makes the toggle work
+  // even if that script did not run, or if another tab changed the preference.
+  let stored = null;
+  try { stored = localStorage.getItem(THEME_KEY); } catch { /* storage off */ }
+  if (stored !== 'light' && stored !== 'dark') stored = null;
+
+  // Still tracking the system, because no choice has been made in this browser.
+  let following = stored === null;
+
+  let button = $('.theme-toggle');
+  let current = stored
+    || document.documentElement.dataset.theme
+    || (system.matches ? 'dark' : 'light');
+
+  function apply(value) {
+    current = value;
+    document.documentElement.dataset.theme = value;
+
+    // The address bar colour on mobile follows the page, so it has to follow too.
+    const meta = $('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', THEME_META[value]);
+
+    if (button) {
+      const next = value === 'dark' ? 'light' : 'dark';
+      const label = `Switch to ${next} theme`;
+      button.setAttribute('aria-label', label);
+      button.title = label;
+    }
+  }
+
+  apply(current);
+
+  system.addEventListener?.('change', (event) => {
+    if (following) apply(event.matches ? 'dark' : 'light');
+  });
+
+  // The button is added here rather than in the markup so that every page gets
+  // it without the five copies of the header being kept in step by hand.
+  const host = $('.header-actions');
+  if (host && !button) {
+    const control = document.createElement('button');
+    control.type = 'button';
+    control.className = 'icon-button theme-toggle';
+    control.innerHTML = `${SUN_GLYPH}${MOON_GLYPH}`;
+    control.addEventListener('click', () => {
+      following = false;
+      const next = current === 'dark' ? 'light' : 'dark';
+      apply(next);
+      try { localStorage.setItem(THEME_KEY, next); } catch { /* lasts one page */ }
+      announce(`Switched to ${next} theme`);
+    });
+    host.append(control);
+    // Assigned before apply() so the new button is described and labelled, not
+    // just appended.
+    button = control;
+  }
+
+  apply(current);
+}
+
 /* ---- header & navigation ------------------------------------------------ */
 function initHeader() {
   const header = $('.site-header');
@@ -1020,7 +1105,7 @@ function initDetail() {
     root.innerHTML = `
       <div class="not-found">
         <h1>We could not find that home</h1>
-        <p style="margin:12px auto 24px;max-width:420px;color:var(--muted)">The listing may have sold or been withdrawn. Browse everything currently on the market instead.</p>
+        <p class="gone-note">The listing may have sold or been withdrawn. Browse everything currently on the market instead.</p>
         <a class="button button--primary" href="properties.html">Browse all homes</a>
       </div>`;
     document.title = 'Listing not found — Northwind Realty';
@@ -1064,7 +1149,7 @@ function initDetail() {
 
         <section class="detail-section">
           <h2>${isLand(listing) ? 'About this plot' : 'About this home'}</h2>
-          <p class="prose" style="margin-top:14px">${escapeHtml(listing.description)}</p>
+          <p class="prose prose--spaced">${escapeHtml(listing.description)}</p>
         </section>
 
         <section class="detail-section">
@@ -1077,7 +1162,7 @@ function initDetail() {
 
       <aside class="agent-card--sticky" aria-labelledby="agent-name">
         <span class="avatar avatar--${agent.tint} avatar--lg">${agent.initials}</span>
-        <h2 id="agent-name" style="margin-top:14px">${escapeHtml(agent.name)}</h2>
+        <h2 class="detail-subhead" id="agent-name">${escapeHtml(agent.name)}</h2>
         <p class="agent-role">${escapeHtml(agent.role)}</p>
         <p>${escapeHtml(agent.bio)}</p>
         <div class="agent-meta">
@@ -1086,7 +1171,7 @@ function initDetail() {
           <span>${icon('home', 'icon--sm')}${agent.listings} sales on record</span>
         </div>
         <button class="button button--primary button--block" type="button" data-viewing>Book a viewing</button>
-        <a class="button button--ghost button--block" style="margin-top:8px" href="contact.html">Ask a question</a>
+        <a class="button button--ghost button--block detail-ask" href="contact.html">Ask a question</a>
       </aside>
     </div>
     <div id="similar-mount"></div>
@@ -1094,7 +1179,7 @@ function initDetail() {
     <dialog class="dialog" id="viewing-dialog" aria-labelledby="viewing-title">
       <form class="dialog-shell" id="viewing-form">
         <!-- Honeypot: hidden from people, filled in by spam bots. -->
-        <input type="text" name="botcheck" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" />
+        <input type="text" name="botcheck" tabindex="-1" autocomplete="off" aria-hidden="true" />
         <header class="dialog-header">
           <div>
             <h2 id="viewing-title">Book a viewing</h2>
@@ -1405,6 +1490,8 @@ function applySiteSettings() {
 }
 
 /* ---- boot --------------------------------------------------------------- */
+// First, because everything after it paints tokens off the root element.
+initTheme();
 applySiteSettings();
 initHeader();
 renderHome();

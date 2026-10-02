@@ -156,9 +156,9 @@
   margin: 0 0 16px;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  background: #fdecec;
-  border: 1px solid #f3c9c9;
-  color: #8a2020;
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-line);
+  color: var(--danger);
   font-size: 14px;
 }
 
@@ -268,8 +268,8 @@
   margin: 4px 0 0;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: #fdecec;
-  color: #8a2020;
+  background: var(--danger-soft);
+  color: var(--danger);
   font-size: 13.5px;
 }
 
@@ -289,11 +289,11 @@
 .button--danger {
   color: var(--danger);
   background: var(--surface);
-  border-color: #e3b6b6;
+  border-color: var(--danger-line);
 }
 
 .button--danger:hover {
-  background: #fdecec;
+  background: var(--danger-soft);
 }
 
 /* ---- the upload drawer ---------------------------------------------------- */

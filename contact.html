@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0f423a" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Content-Security-Policy as a meta tag, because GitHub Pages cannot set
+         response headers. Two directives are deliberately missing: frame-ancestors
+         is ignored in a meta tag and needs a real header, and
+         upgrade-insecure-requests would rewrite http://localhost and break the
+         local server. style-src has no 'unsafe-inline' because the inline style
+         attributes were moved into styles.css - putting one back would weaken
+         this on every page without looking like a mistake. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self' https://api.web3forms.com https://formspree.io; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self' https://api.frankfurter.app https://open.er-api.com https://api.web3forms.com https://formspree.io https://*.workers.dev" />
+    <!-- theme.js resolves the colour theme before first paint, so nobody who
+         asked for dark gets a flash of the light one. It has to be a blocking
+         script in the head, and a separate file rather than inline, so the
+         policy above can keep script-src at 'self'. -->
+    <script src="theme.js"></script>
     <meta name="description" content="Talk to Northwind Realty about buying, selling or renting in Harbor Point, Northgate and Elmwood." />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
@@ -12,7 +26,7 @@
   <body data-page="contact">
     <a class="skip-link" href="#main">Skip to content</a>
 
-    <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
+    <svg xmlns="http://www.w3.org/2000/svg" class="icon-sprite" aria-hidden="true" focusable="false">
       <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
       <symbol id="icon-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
       <symbol id="icon-heart" viewBox="0 0 24 24"><path d="M20.8 5.6a5 5 0 0 0-7.1 0L12 7.3l-1.7-1.7a5 5 0 1 0-7.1 7.1l8.8 8.8 8.8-8.8a5 5 0 0 0 0-7.1Z"/></symbol>
@@ -84,10 +98,10 @@
         <div class="container contact-layout">
           <div class="form-card">
             <p class="eyebrow">Send a message</p>
-            <h2 class="section-title" style="font-size:26px">How can we help?</h2>
-            <form id="contact-form" style="margin-top:26px">
+            <h2 class="section-title section-title--small">How can we help?</h2>
+            <form class="form--spaced" id="contact-form">
               <!-- Honeypot: hidden from people, filled in by spam bots. -->
-              <input type="text" name="botcheck" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" />
+              <input type="text" name="botcheck" tabindex="-1" autocomplete="off" aria-hidden="true" />
               <div class="form-grid">
                 <label class="field">
                   <span>Name</span>
@@ -143,10 +157,10 @@
 
           <div>
             <p class="eyebrow">Visit us</p>
-            <h2 class="section-title" style="font-size:26px">Three offices</h2>
-            <div class="office-list" id="office-list" style="margin-top:22px"></div>
+            <h2 class="section-title section-title--small">Three offices</h2>
+            <div class="office-list office-list--spaced" id="office-list"></div>
 
-            <p class="eyebrow" style="margin-top:44px">Common questions</p>
+            <p class="eyebrow eyebrow--spaced">Common questions</p>
             <div class="faq">
               <details open>
                 <summary>Do you charge for a valuation?<svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-x"></use></svg></summary>
@@ -207,7 +221,7 @@
           </div>
           <div class="footer-col">
             <h3>New listings</h3>
-            <p style="color:var(--muted-strong);font-size:14px">One email a week with everything new. No spam, unsubscribe in a click.</p>
+            <p class="newsletter-note">One email a week with everything new. No spam, unsubscribe in a click.</p>
             <form class="newsletter" id="newsletter-form">
               <label class="sr-only" for="newsletter-email">Email address</label>
               <input id="newsletter-email" name="email" type="email" placeholder="you@example.com" required />

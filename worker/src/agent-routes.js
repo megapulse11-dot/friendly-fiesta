@@ -42,6 +42,29 @@ import {
   clean
 } from './lib/validate.js';
 import { storePhoto, readPhoto, deletePhoto, MAX_PHOTOS } from './lib/photos.js';
+import { checkThrottle, recordFailure, clearFailures, MAX_FAILURES } from './lib/throttle.js';
+
+/**
+ * The answer a throttled caller gets.
+ *
+ * 429 with a Retry-After is the honest response, and the message says how many
+ * attempts are needed rather than how long the lock lasts, so the person waiting
+ * knows whether to fix a typo or to wait.
+ *
+ * It deliberately does not say which address is locked out or whether that
+ * address has an account: the throttle must not become a way to probe either.
+ */
+function tooManyAttempts(gate) {
+  return json(
+    {
+      ok: false,
+      error: `Too many failed attempts. Try again in ${Math.max(1, Math.ceil(gate.retriesIn / 60))} minutes.`,
+      maxFailures: MAX_FAILURES
+    },
+    429,
+    { 'Retry-After': String(Math.max(1, gate.retriesIn || 60)) }
+  );
+}
 
 function json(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
@@ -164,17 +187,29 @@ function parseColumn(text, fallback) {
 /* ---- accounts ------------------------------------------------------------- */
 
 async function handleRegister(request, env) {
+  // Registration hashes a password too, so it is throttled on the same budget as
+  // sign-in. Otherwise it is the cheaper of the two routes to hammer.
+  const gate = await checkThrottle(env, request);
+  if (gate.blocked) return tooManyAttempts(gate);
+
   const body = await readJson(request);
   if (!body) return json({ ok: false, error: 'That request was not readable.' }, 400);
 
   const email = normaliseEmail(body.email);
-  if (!email) return json({ ok: false, error: 'Enter a valid email address.' }, 400);
+  if (!email) {
+    await recordFailure(env, request);
+    return json({ ok: false, error: 'Enter a valid email address.' }, 400);
+  }
 
   const password = checkPassword(body.password);
-  if (!password.ok) return json({ ok: false, error: password.error }, 400);
+  if (!password.ok) {
+    await recordFailure(env, request);
+    return json({ ok: false, error: password.error }, 400);
+  }
 
   const name = cleanName(body.name);
   if (name.length < 2) {
+    await recordFailure(env, request);
     return json({ ok: false, error: 'Enter your name, as you would like it shown.' }, 400);
   }
 
@@ -189,6 +224,9 @@ async function handleRegister(request, env) {
     .bind(email)
     .first();
   if (existing) {
+    // Reached only after the request passed every check, so this is the path
+    // that costs real CPU. It is the one worth counting.
+    await recordFailure(env, request);
     return json(
       { ok: false, error: 'There is already an account with that email. Sign in instead.' },
       409
@@ -220,6 +258,12 @@ async function handleRegister(request, env) {
 }
 
 async function handleSignin(request, env) {
+  // Checked before the body is read, so a throttled caller never reaches scrypt.
+  // That ordering is the whole point: the expensive work happens after the gate,
+  // never before it.
+  const gate = await checkThrottle(env, request);
+  if (gate.blocked) return tooManyAttempts(gate);
+
   const body = await readJson(request);
   if (!body) return json({ ok: false, error: 'That request was not readable.' }, 400);
 
@@ -240,8 +284,18 @@ async function handleSignin(request, env) {
    */
   const valid = row ? verifyPassword(password, row) : false;
   if (!valid) {
+    // Counted only once the password has been verified. Counting earlier would
+    // mean anyone could push somebody else's address over the limit, and the
+    // counter itself would become a way of testing whether an address has an
+    // account - the one thing this route is careful never to reveal.
+    await recordFailure(env, request);
     return json({ ok: false, error: 'That email address and password do not match.' }, 401);
   }
+
+  // A sign-in that worked clears the count, so somebody who fumbled their
+  // password and then got it right starts clean rather than serving the rest of
+  // the window one mistake from a lockout.
+  await clearFailures(env, request);
 
   if (row.status !== 'active') {
     return json({ ok: false, error: 'That account is not active. Please contact the office.' }, 403);

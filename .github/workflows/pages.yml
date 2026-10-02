@@ -44,8 +44,14 @@ jobs:
           # is static like everything else here; the uploads go to the worker, not
           # to this site. Its listing script is listed separately because it is
           # only ever used by that one page.
+          #
+          # theme.js is the theme bootstrap. It is a separate file rather than an
+          # inline <script> precisely so that the pages can ship a CSP without
+          # 'unsafe-inline', which means it has to be published like any other
+          # script - leave it out and the theme silently stops working on the
+          # published site while working perfectly on localhost.
           for file in index.html properties.html property.html contact.html \
-                      app.js styles.css data.js favicon.svg \
+                      app.js styles.css data.js favicon.svg theme.js \
                       agent.html agent.js agent.css; do
             if [ ! -f "$file" ]; then
               echo "::error::Missing $file - the site would break."
