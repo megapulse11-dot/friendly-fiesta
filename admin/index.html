@@ -36,6 +36,7 @@
       <nav class="tabs" role="tablist" aria-label="Sections">
         <button role="tab" aria-selected="true" data-tab="listings">Listings</button>
         <button role="tab" aria-selected="false" data-tab="enquiries">Enquiries <span class="tab-badge" id="enquiry-badge" hidden>0</span></button>
+        <button role="tab" aria-selected="false" data-tab="submissions">Submissions <span class="tab-badge" id="submission-badge" hidden>0</span></button>
         <button role="tab" aria-selected="false" data-tab="agents">Agents</button>
         <button role="tab" aria-selected="false" data-tab="offices">Offices</button>
         <button role="tab" aria-selected="false" data-tab="settings">Site settings</button>
@@ -81,6 +82,19 @@
           <div id="enquiries-body"></div>
         </section>
 
+        <section class="panel" id="panel-submissions" hidden>
+          <div class="panel-head">
+            <div>
+              <h2>Submissions</h2>
+              <p>Homes and land uploaded by agents. Nothing here is on the website until you approve it.</p>
+            </div>
+            <span class="grow"></span>
+            <button class="btn btn--secondary" id="submissions-refresh" type="button">Refresh</button>
+          </div>
+          <p class="hint" id="submissions-hint" hidden></p>
+          <div id="submissions-body"></div>
+        </section>
+
         <section class="panel" id="panel-agents" hidden>
           <div class="panel-head">
             <div><h2>Agents</h2><p>These appear on the home page and on every listing.</p></div>
@@ -102,6 +116,7 @@
         <section class="panel" id="panel-settings" hidden>
           <div class="panel-head"><div><h2>Site settings</h2><p>Branding, colours and the words on the home page.</p></div></div>
           <form id="settings-form" class="form-grid" style="max-width:760px"></form>
+          <p class="hint" id="currency-status" style="max-width:760px;margin-top:16px"></p>
         </section>
       </main>
     </div>

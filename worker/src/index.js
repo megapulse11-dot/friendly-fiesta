@@ -24,6 +24,13 @@
  * enquiries.json. See admin/server.ps1 and worker/README.md.
  */
 
+// Agent accounts, listing submissions, and the office routes that review them.
+// These are separate modules because they have different guards: the agent half
+// is reachable by the public (after a successful sign-in), the office half only
+// by the holder of INBOX_TOKEN.
+import { handleAgentRequest } from './agent-routes.js';
+import { handleOfficeRequest } from './admin-routes.js';
+
 // Set this to the Pages origin, e.g. https://megapulse11-dot.github.io
 const ALLOWED_ORIGIN = 'https://megapulse11-dot.github.io';
 
@@ -199,6 +206,16 @@ export default {
     const { pathname } = new URL(request.url);
 
     try {
+      // Agents and the office. Both echo the caller's own Origin rather than a
+      // wildcard, because the office half carries a bearer token - and a wildcard
+      // would let any page on the internet make the browser attach it.
+      if (pathname.indexOf('/agent/') === 0) {
+        return await handleAgentRequest(request, env, pathname, request.headers.get('Origin') || ALLOWED_ORIGIN);
+      }
+      if (pathname.indexOf('/office/') === 0) {
+        return await handleOfficeRequest(request, env, pathname, request.headers.get('Origin') || ALLOWED_ORIGIN);
+      }
+
       if (pathname === '/enquiry' && request.method === 'POST') return await handleSubmit(request, env);
       if (pathname === '/enquiries' && request.method === 'GET') return await handleList(request, env);
       if (pathname === '/enquiry' && request.method === 'DELETE') return await handleDelete(request, env);

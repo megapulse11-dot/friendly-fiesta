@@ -45,7 +45,10 @@ param(
     [SecureString] $Password,
 
     [Parameter()]
-    [string] $Root
+    [string] $Root,
+
+    [Parameter()]
+    [string] $AppRoot
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,6 +58,15 @@ if (-not $Root) {
     $Root = Split-Path -Path $PSScriptRoot -Parent
 }
 $Root = [System.IO.Path]::GetFullPath($Root)
+
+# The mobile app keeps its own copy of the dataset, because a native app cannot
+# read data.json out of the website folder at runtime. That copy is refreshed by
+# the app's own sync script; see Sync-AppDataset for why that is wired in here.
+if (-not $AppRoot) {
+    $AppRoot = Join-Path (Split-Path -Path $Root -Parent) 'northwind-mobile'
+}
+$AppRoot = [System.IO.Path]::GetFullPath($AppRoot)
+$appSyncScript = Join-Path $AppRoot 'scripts\sync-data.mjs'
 
 # The password is held as a SecureString. Plain text is only ever read from the
 # environment and is dropped as soon as it is copied.
@@ -116,6 +128,21 @@ $contentTypes = @{
     '.gif'   = 'image/gif'
     '.ico'   = 'image/x-icon'
     '.woff2' = 'font/woff2'
+}
+
+# Server-side scripts, shell entry points and key material are never site content,
+# so they are refused whatever they are named. A blanket extension list is used
+# rather than a few known filenames so that a newly added script is covered by
+# default instead of needing a second edit. Anything in here returns 404, the same
+# as a missing file, so nothing here advertises that it exists.
+$blockedExtensions = @{
+    '.ps1' = $true; '.psm1' = $true; '.psd1' = $true   # the server and its modules
+    '.cmd' = $true; '.bat' = $true                       # shell entry points
+    '.env' = $true; '.ini' = $true; '.config' = $true    # configuration and secrets
+    '.log' = $true
+    '.key' = $true; '.pem' = $true; '.pfx' = $true; '.p12' = $true; '.crt' = $true; '.cer' = $true
+    '.db' = $true; '.sqlite' = $true; '.sql' = $true; '.mdb' = $true
+    '.bak' = $true; '.orig' = $true; '.swp' = $true
 }
 
 function Write-Json {
@@ -196,9 +223,63 @@ function Read-Data {
 
 function Save-Data {
     param($Data)
+    # Stamp the content on every save.
+    #
+    # The published data.js is a *build* artifact: it only changes when someone
+    # commits and Pages redeploys. Until then it can be older than a dataset an
+    # editor has since changed locally, and the mobile app - which fetches it to
+    # avoid shipping baked-in prices - would then walk the prices backwards. A
+    # monotonic stamp lets the app compare the two copies and keep the newer one,
+    # which is the whole reason this field exists. It is a plain number rather
+    # than a date so a clock change cannot make a newer save look older.
+    $previous = 0L
+    if ($Data.site -and $Data.site.PSObject.Properties['contentVersion']) {
+        [void][long]::TryParse([string]$Data.site.contentVersion, [ref]$previous)
+    }
+    if ($Data.site) {
+        $Data.site | Add-Member -NotePropertyName 'contentVersion' `
+                                 -NotePropertyValue ([string]($previous + 1)) -Force
+    }
+
     $json = $Data | ConvertTo-Json -Depth 12
     [System.IO.File]::WriteAllText($dataJsonPath, $json, (New-Object System.Text.UTF8Encoding($false)))
     Write-DataJs -Data $Data
+    Sync-AppDataset
+}
+
+# ---- the mobile app's copy of the content ---------------------------------
+<#
+    The app imports its dataset at build time, so a save in the content admin
+    could not reach it by itself: editing a price here used to leave the phone
+    showing the old number until somebody remembered to run `npm run sync-data`.
+    That is the whole reason this runs on save.
+
+    It is deliberately best-effort. The website is the product and the app is a
+    second front end for it, so a missing Node, a missing app folder or a failing
+    sync is reported and then ignored rather than being allowed to fail a save
+    that has already been written to disk.
+#>
+function Sync-AppDataset {
+    if (-not (Test-Path -LiteralPath $appSyncScript -PathType Leaf)) { return }
+
+    $node = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $node) {
+        Write-Verbose 'Node was not found, so the mobile app dataset was left alone.'
+        return
+    }
+
+    try {
+        # The sync script reads data.json from the site folder passed to it, so
+        # this works whatever the two folders are called or where they sit.
+        $output = & $node.Source $appSyncScript $Root 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "The mobile app dataset could not be refreshed: $output"
+            return
+        }
+        Write-Verbose "Mobile app dataset refreshed. $output"
+    } catch {
+        Write-Warning "The mobile app dataset could not be refreshed: $($_.Exception.Message)"
+    }
 }
 
 # ---- enquiries ------------------------------------------------------------
@@ -366,6 +447,64 @@ function Sync-RemoteEnquiries {
     }
 
     return @{ enquiries = $local }
+}
+
+function Sync-RemoteSubmissions {
+    if (-not $workerUrl -or -not $workerToken) { return @() }
+    try {
+        $headers = @{ Authorization = "Bearer $workerToken" }
+        $remote = Invoke-RestMethod -Uri "$($workerUrl.TrimEnd('/'))/office/submissions" `
+            -Method Get -Headers $headers -TimeoutSec $workerTimeoutSeconds
+        if ($null -ne $remote.PSObject.Properties['submissions']) { return @($remote.submissions) }
+    } catch {
+        Write-Warning "Could not reach the submission worker: $($_.Exception.Message)"
+    }
+    return @()
+}
+
+# Fetch one approved photo out of the worker's private bucket and into
+# assets/homes, returning the name it was written under.
+#
+# The name is built here from the submission id and the photo key, never from
+# anything the agent sent: the key arrives over HTTP and ends up as a path on
+# this machine, so a key carrying `..` or a stray extension has to be impossible
+# rather than merely unlikely. The key is validated against the shape the worker
+# writes and the extension is taken from the tail of that already-checked text.
+function Save-RemotePhoto {
+    param([string] $WorkerUrl, [string] $WorkerToken, [string] $PhotoKey, [string] $SubmissionId)
+
+    if ($PhotoKey -notmatch '^submissions/sub_[A-Za-z0-9_-]{1,32}/[A-Za-z0-9-]{1,64}\.(jpg|png|webp)$') {
+        Write-Warning "Refusing a photo key that is not shaped like one: $PhotoKey"
+        return ''
+    }
+    if (-not (Test-Path -LiteralPath $photoFolder)) { return '' }
+
+    $extension = ([regex]::Match($PhotoKey, '\.(jpg|png|webp)$')).Groups[1].Value
+    $stem = [System.IO.Path]::GetFileNameWithoutExtension([string]$PhotoKey)
+    $safeName = ([regex]::Replace($stem, '[^A-Za-z0-9._-]', '-')) + '-' + $SubmissionId + '.' + $extension
+    if (-not $safeName -or $safeName.StartsWith('.')) { return '' }
+
+    # Fetched to memory rather than streamed to disk with -OutFile, so a failure
+    # or a non-image response cannot leave a truncated file behind that the next
+    # Pages build would then publish.
+    $bytes = $null
+    try {
+        $bytes = Invoke-WebRequest -Uri "$($WorkerUrl.TrimEnd('/'))/agent/photos/$PhotoKey" `
+            -Method Get -Headers @{ Authorization = "Bearer $WorkerToken" } `
+            -TimeoutSec $workerTimeoutSeconds -UseBasicParsing | Select-Object -ExpandProperty Content
+    } catch {
+        Write-Warning "Could not fetch photo $PhotoKey : $($_.Exception.Message)"
+        return ''
+    }
+
+    $raw = if ($bytes -is [byte[]]) { $bytes } else { [System.Text.Encoding]::UTF8.GetBytes([string]$bytes) }
+    if (-not $raw -or $raw.Length -eq 0 -or $raw.Length -gt $maxUploadBytes) {
+        Write-Warning "Photo $PhotoKey was empty or too large; skipped."
+        return ''
+    }
+
+    [System.IO.File]::WriteAllBytes((Join-Path $photoFolder $safeName), $raw)
+    return $safeName
 }
 
 function Add-Enquiry {
@@ -614,6 +753,169 @@ function Invoke-Api {
             [System.IO.File]::WriteAllBytes((Join-Path $photoFolder $safeName), $bytes)
             Write-Json -Context $Context -Status 200 -Payload @{ ok = $true; path = "assets/homes/$safeName" }
         }
+        '^/api/submissions$' {
+            # Read through to the worker rather than a local file. The panel pulls,
+            # for the same reason it pulls enquiries: it binds to loopback, so the
+            # worker cannot reach it. Nothing is cached here either - the worker
+            # holds the only copy of a submission until it is approved.
+            if ($Method -ne 'GET') {
+                Write-Json -Context $Context -Status 405 -Payload @{ ok = $false; error = 'Use GET.' }
+                return
+            }
+            if (-not $workerUrl -or -not $workerToken) {
+                Write-Json -Context $Context -Status 200 -Payload @{ ok = $true; submissions = @(); configured = $false }
+                return
+            }
+            try {
+                $headers = @{ Authorization = "Bearer $workerToken" }
+                $remote = Invoke-RestMethod -Uri "$($workerUrl.TrimEnd('/'))/office/submissions" `
+                    -Method Get -Headers $headers -TimeoutSec $workerTimeoutSeconds
+                $items = @()
+                if ($null -ne $remote.PSObject.Properties['submissions']) { $items = @($remote.submissions) }
+                Write-Json -Context $Context -Status 200 -Payload @{ ok = $true; submissions = $items; configured = $true }
+            } catch {
+                # A worker that is down or misconfigured should leave the tab
+                # readable and empty rather than take the panel down.
+                Write-Warning "Could not reach the submission worker: $($_.Exception.Message)"
+                Write-Json -Context $Context -Status 200 -Payload @{ ok = $true; submissions = @(); configured = $true; warning = 'Could not reach the worker.' }
+            }
+        }
+        '^/api/submissions/(?<sid>sub_[A-Za-z0-9_-]{1,32})/(?<verdict>approve|reject)$' {
+            if ($Method -ne 'POST') {
+                Write-Json -Context $Context -Status 405 -Payload @{ ok = $false; error = 'Use POST.' }
+                return
+            }
+            if (-not $workerUrl -or -not $workerToken) {
+                Write-Json -Context $Context -Status 503 -Payload @{ ok = $false; error = 'NW_WORKER_URL and NW_WORKER_TOKEN are not set.' }
+                return
+            }
+
+            $sid = $Matches['sid']
+            $verdict = $Matches['verdict']
+            $officeHeaders = @{ Authorization = "Bearer $workerToken" }
+            $body = Read-Body -Request $Context.Request
+            $note = ConvertTo-PlainText (Get-FieldValue $body 'note') 400
+
+            # Fetch the submission so the listing is written from what the agent
+            # actually sent, not from whatever the panel happens to be displaying.
+            try {
+                $remote = Invoke-RestMethod -Uri "$($workerUrl.TrimEnd('/'))/office/submissions" `
+                    -Method Get -Headers $officeHeaders -TimeoutSec $workerTimeoutSeconds
+            } catch {
+                Write-Json -Context $Context -Status 502 -Payload @{ ok = $false; error = 'Could not reach the worker.' }
+                return
+            }
+
+            $submission = $null
+            foreach ($item in @($remote.submissions)) {
+                if ([string](Get-FieldValue $item 'id') -eq $sid) { $submission = $item; break }
+            }
+            if (-not $submission) {
+                Write-Json -Context $Context -Status 404 -Payload @{ ok = $false; error = 'That submission is gone.' }
+                return
+            }
+
+            if ($verdict -eq 'reject') {
+                try {
+                    $null = Invoke-RestMethod -Uri "$($workerUrl.TrimEnd('/'))/office/submissions/$sid/reject" `
+                        -Method Post -Headers $officeHeaders -ContentType 'application/json' `
+                        -Body (@{ note = $note } | ConvertTo-Json -Depth 4) -TimeoutSec $workerTimeoutSeconds
+                } catch {
+                    Write-Warning "Could not record the rejection: $($_.Exception.Message)"
+                }
+                Write-Json -Context $Context -Status 200 -Payload @{ ok = $true; state = 'rejected' }
+                return
+            }
+
+            $listing = Get-FieldValue $submission 'listing'
+            if (-not $listing -or -not (Get-FieldValue $listing 'title')) {
+                Write-Json -Context $Context -Status 400 -Payload @{ ok = $false; error = 'That submission has no listing in it.' }
+                return
+            }
+
+            $data = Read-Data
+            $listingId = [string]$submission.listingId
+            if (-not $listingId) {
+                # A fresh id that cannot collide with a hand-written p1/p2 listing.
+                $listingId = 'a' + [guid]::NewGuid().ToString('N').Substring(0, 10)
+            }
+            if (@($data.listings | Where-Object { $_.id -eq $listingId }).Count -gt 0) {
+                Write-Json -Context $Context -Status 409 -Payload @{ ok = $false; error = 'That submission is already on the website.' }
+                return
+            }
+
+            # Photographs leave the private R2 bucket now, and only now: this is
+            # the moment the listing becomes public, so this is the first moment
+            # its images may sit in assets/homes, which the Pages workflow copies
+            # wholesale and without review.
+            $images = @()
+            foreach ($key in @(Get-FieldValue $submission 'photos')) {
+                if (-not $key) { continue }
+                $name = Save-RemotePhoto -WorkerUrl $workerUrl -WorkerToken $workerToken `
+                    -PhotoKey ([string]$key) -SubmissionId $sid
+                if ($name) { $images += "assets/homes/$name" }
+            }
+
+            # The agent also becomes an agent record, so the listing's card shows
+            # their name. agentFor() in app.js falls back to the first agent when
+            # an id is unknown, and a stranger's name under a listing is worse.
+            $agentId = ''
+            if ($submission.agent) {
+                $agentName = ConvertTo-PlainText (Get-FieldValue $submission.agent 'name') 80
+                $agentEmail = ConvertTo-PlainText (Get-FieldValue $submission.agent 'email') 200
+                $found = @($data.agents | Where-Object { $_.email -eq $agentEmail }) | Select-Object -First 1
+                if ($found) {
+                    $agentId = [string]$found.id
+                } elseif ($agentName) {
+                    $agentId = 'ag' + [guid]::NewGuid().ToString('N').Substring(0, 6)
+                    $data.agents = @($data.agents) + @([ordered]@{
+                        id = $agentId; name = $agentName; role = 'Agent'
+                        email = $agentEmail; phone = ''; bio = ''
+                    })
+                }
+            }
+
+            $entry = [ordered]@{
+                id       = $listingId
+                title    = [string](Get-FieldValue $listing 'title')
+                address  = [string](Get-FieldValue $listing 'address')
+                city     = [string](Get-FieldValue $listing 'city')
+                type     = [string](Get-FieldValue $listing 'type')
+                status   = [string](Get-FieldValue $listing 'status')
+                price    = [double](Get-FieldValue $listing 'price')
+                beds     = [int](Get-FieldValue $listing 'beds')
+                baths    = [int](Get-FieldValue $listing 'baths')
+                area     = [int](Get-FieldValue $listing 'area')
+                lot      = [string](Get-FieldValue $listing 'lot')
+                year     = [int](Get-FieldValue $listing 'year')
+                parking  = [int](Get-FieldValue $listing 'parking')
+                featured = $false
+                listed   = (Get-Date).ToString('yyyy-MM-dd')
+                agentId  = $agentId
+                image    = $(if ($images.Count -gt 0) { $images[0] } else { 'assets/homes/property-01.svg' })
+                images   = $images
+                features = @(Get-FieldValue $listing 'features')
+                description = [string](Get-FieldValue $listing 'description')
+                removedPhotos = @()
+            }
+            if (Get-FieldValue $listing 'land') { $entry['land'] = Get-FieldValue $listing 'land' }
+
+            $data.listings = @($data.listings) + @($entry)
+            Save-Data -Data $data
+
+            # Only now is the worker told, passing back the id the listing was
+            # given - which is what links the agent's copy to the live listing.
+            try {
+                $null = Invoke-RestMethod -Uri "$($workerUrl.TrimEnd('/'))/office/submissions/$sid/approve" `
+                    -Method Post -Headers $officeHeaders -ContentType 'application/json' `
+                    -Body (@{ listingId = $listingId } | ConvertTo-Json -Depth 4) `
+                    -TimeoutSec $workerTimeoutSeconds
+            } catch {
+                Write-Warning "The listing is live, but the worker was not told: $($_.Exception.Message)"
+            }
+
+            Write-Json -Context $Context -Status 200 -Payload @{ ok = $true; state = 'approved'; listingId = $listingId }
+        }
         '^/api/export$' {
             Send-File -Context $Context -FilePath $dataJsonPath
         }
@@ -697,6 +999,26 @@ try {
                 continue
             }
 
+            # Anything under a dot-prefixed folder or file - .git, .runlogs, .env
+            # and so on - is working state rather than site content, and is served
+            # by nothing. A password or a log file left in one of those folders is
+            # exactly the sort of thing that must not be reachable over HTTP, so
+            # the whole class is refused here rather than one name at a time.
+            if (($path.TrimStart('/') -split '/') -match '^\.') {
+                $context.Response.StatusCode = 404
+                $context.Response.Close()
+                continue
+            }
+
+            # Same reasoning one level down: server.ps1 and friends sit inside the
+            # web root, so a dot-prefix check cannot see them. Refusing the
+            # extension keeps the auth logic itself from being readable.
+            if ($blockedExtensions.ContainsKey([System.IO.Path]::GetExtension($path).ToLowerInvariant())) {
+                $context.Response.StatusCode = 404
+                $context.Response.Close()
+                continue
+            }
+
             $asset = Resolve-SafePath -RelativePath $path
             if (-not $asset) {
                 $context.Response.StatusCode = 403
@@ -713,6 +1035,10 @@ try {
             try { $context.Response.StatusCode = 500; $context.Response.Close() } catch { }
         }
     }
+} catch {
+    # Allow the listener to shut down cleanly if GetContext or request handling
+    # fails outside the per-request handler.
+    Write-Warning "Listener stopped: $($_.Exception.Message)"
 } finally {
     $listener.Stop()
     $listener.Close()

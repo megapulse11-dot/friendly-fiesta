@@ -12,6 +12,14 @@ name = "northwind-enquiries"
 main = "src/index.js"
 compatibility_date = "2024-11-06"
 
+# Required by lib/auth.js, which hashes passwords with node:crypto's scryptSync.
+#
+# This is not optional: without it the import fails and every sign-in and
+# sign-up 500s. scrypt was chosen over PBKDF2 precisely because it is implemented
+# natively in workerd, so it stays inside the Workers Free plan's 10 ms CPU
+# budget - see the comment at the top of lib/auth.js.
+compatibility_flags = ["nodejs_compat"]
+
 # The Pages origin the published site is served from. Kept in step with
 # ALLOWED_ORIGIN in src/index.js.
 [vars]
@@ -23,5 +31,39 @@ ALLOWED_ORIGIN = "https://megapulse11-dot.github.io"
 binding = "ENQUIRIES"
 id = "PASTE_THE_KV_NAMESPACE_ID_HERE"
 
-# INBOX_TOKEN is a secret, set with `npx wrangler secret put INBOX_TOKEN`. It
-# must match NW_WORKER_TOKEN in the local admin server's environment.
+# --------------------------------------------------------------------------
+# Agent accounts and listing uploads
+#
+# D1 holds the accounts and their submissions. A relational database rather than
+# another KV namespace, because two agents saving at the same time must not
+# overwrite each other - KV is eventually consistent and last write wins, which
+# is fine for an inbox of enquiries and wrong for this.
+#
+#   npx wrangler d1 create northwind
+#   npx wrangler d1 migrations apply northwind
+# --------------------------------------------------------------------------
+[[d1_databases]]
+binding = "DB"
+database_name = "northwind"
+database_id = "PASTE_THE_D1_DATABASE_ID_HERE"
+
+# Photographs uploaded by agents. Private on purpose: the Pages workflow copies
+# assets/ wholesale, so anything written there would be published the moment it
+# was saved, before anyone approved it. Approved photos are copied into
+# assets/homes/ by the admin panel instead.
+#
+#   npx wrangler r2 bucket create northwind-photos
+# --------------------------------------------------------------------------
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "northwind-photos"
+
+# Two secrets, both with `npx wrangler secret put NAME`. Neither is ever written
+# to this file or committed.
+#
+#   INBOX_TOKEN      the same value as NW_WORKER_TOKEN on the office machine.
+#                    Guards /office/*; with it unset those routes answer 404.
+#   SESSION_SECRET   a long random value used to sign agent session tokens.
+#                    Changing it signs every agent out - which is the point of it.
+#
+#   [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')

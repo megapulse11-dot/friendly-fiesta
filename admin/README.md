@@ -49,7 +49,33 @@ the console or the sign-in page.
 | Enquiries | Messages and viewing requests sent from the website, with read, archive and delete |
 | Agents | Names, roles, contact details and bios shown on the home page and listings |
 | Offices | Addresses, phone numbers and opening hours for the footer and contact page |
-| Site settings | Company name, home page headline and intro, brand and accent colours, contact email and phone, footer text |
+| Site settings | Company name, home page headline and intro, brand and accent colours, base currency, contact email and phone, footer text |
+
+## Saving and the mobile app
+
+A save here also refreshes the app in `../northwind-mobile`, so a price, a photo or
+the base currency you change appears on the phone without any extra step. The
+server runs the app's own `scripts/sync-data.mjs` after it writes `data.json`.
+
+Two things worth knowing:
+
+- The app reads its content at **build** time, not at runtime, so this is a copy.
+  With Metro running the edit hot-reloads straight away. A released build has the
+  old numbers baked in and needs a rebuild to pick them up.
+- The sync is best-effort. If Node is missing, the app folder has moved, or the
+  script fails, the save still succeeds and the server prints a warning — it never
+  fails a save that is already safely on disk. Pass `-AppRoot` if the app is not
+  beside the website folder:
+
+  ```powershell
+  .\admin\server.ps1 -AppRoot C:\path\to\northwind-mobile
+  ```
+
+To run it by hand instead:
+
+```powershell
+cd ..\northwind-mobile; npm run sync-data
+```
 
 ## Enquiries
 
@@ -105,6 +131,28 @@ than the panel failing.
 Deleting an enquiry also removes it from the worker, and the id is remembered in
 **`enquiries-removed.json`**, so it cannot reappear on a later pull. Back that
 file up with `enquiries.json` if you care about keeping the two in step.
+
+## Currency
+
+Every price is stored as a plain number in one **base currency**, and this panel
+always shows and accepts that currency — you are typing the number that will be
+saved, never a converted one. Change it under **Site settings → Base currency**;
+the listings table follows immediately.
+
+Visitors can read the website in any other currency. That conversion happens on
+the public site, which fetches live reference rates from `frankfurter.app` and
+prints the rate date under the picker. Nothing to configure here, and no API key.
+The line under the settings form reports the rate date the site is currently
+using, or says plainly that it could not reach the service — useful, because a
+rate from Friday is normal at a weekend and is not the same as a broken feed.
+
+The ECB set covers 30 currencies and does not include every currency a visitor
+might pick. The Kenyan shilling is the obvious gap for this site, so the website
+falls back to a second key-less rate service for codes the ECB cannot quote. Any
+currency can be chosen as the base here, including one the ECB does not publish.
+
+Budget filters and sorting on the website work in base-currency numbers, so a
+shared link means the same thing whatever currency the reader picks.
 
 ## How saving works
 

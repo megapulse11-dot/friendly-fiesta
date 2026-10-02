@@ -18,6 +18,8 @@
       <symbol id="icon-heart" viewBox="0 0 24 24"><path d="M20.8 5.6a5 5 0 0 0-7.1 0L12 7.3l-1.7-1.7a5 5 0 1 0-7.1 7.1l8.8 8.8 8.8-8.8a5 5 0 0 0 0-7.1Z"/></symbol>
       <symbol id="icon-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
       <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></symbol>
+      <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M9.5 5v14M14.5 5v14"/></symbol>
       <symbol id="icon-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/></symbol>
       <symbol id="icon-bed" viewBox="0 0 24 24"><path d="M3 18v-7a2 2 0 0 1 2-2h5a5 5 0 0 1 5 5v4"/><path d="M3 14h18v4"/><path d="M21 18v-4"/><circle cx="7.5" cy="11" r="2"/></symbol>
       <symbol id="icon-bath" viewBox="0 0 24 24"><path d="M4 12h16v3a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4Z"/><path d="M6 12V6.5A2.5 2.5 0 0 1 10.5 5"/><path d="m6 19.5-1 1.5M18 19.5l1 1.5"/></symbol>
@@ -50,8 +52,14 @@
           <a href="index.html" data-nav="home">Home</a>
           <a href="properties.html" data-nav="properties">Properties</a>
           <a href="contact.html" data-nav="contact">Contact</a>
+          <a href="agent.html" data-nav="agents">Agents</a>
         </nav>
         <div class="header-actions">
+          <div class="currency-picker" data-currency-picker hidden>
+            <label class="sr-only" for="currency-select">Show prices in</label>
+            <select id="currency-select" data-currency-select></select>
+            <small class="currency-note" data-currency-note hidden></small>
+          </div>
           <a class="button button--primary" href="properties.html">Browse homes</a>
           <button class="icon-button menu-button" type="button" data-menu-toggle aria-label="Open menu" aria-expanded="false" aria-controls="primary-navigation">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-menu"></use></svg>
@@ -63,6 +71,10 @@
 
     <main id="main">
       <section class="hero">
+        <!-- The property slideshow sits behind the headline at z-index 0, so the
+             hero keeps its green background until app.js has frames to put here. -->
+        <div class="hero-slides" data-hero-slides aria-hidden="true"></div>
+
         <div class="container">
           <div class="hero-inner">
             <p class="eyebrow" data-site="tagline">Est. 1998 · Harbor Point</p>
@@ -78,14 +90,36 @@
               <div><strong>98%</strong><span>Asking price achieved</span></div>
             </div>
           </div>
+
+          <!-- Hidden until app.js builds the dots, so the frame never appears with
+               dead controls if the script does not run. -->
+          <div class="hero-slider" hidden>
+            <p class="hero-slide-caption">
+              <span class="hero-slide-label">Featured</span>
+              <a data-hero-caption href="properties.html">Our current portfolio</a>
+            </p>
+            <div class="hero-slide-controls">
+              <button class="hero-slide-btn" type="button" data-hero-prev aria-label="Show the previous property">
+                <svg class="icon icon--flip" aria-hidden="true" focusable="false"><use href="#icon-arrow-right"></use></svg>
+              </button>
+              <div class="hero-dots" data-hero-dots role="group" aria-label="Featured properties"></div>
+              <button class="hero-slide-btn" type="button" data-hero-next aria-label="Show the next property">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-arrow-right"></use></svg>
+              </button>
+              <button class="hero-slide-btn" type="button" data-hero-toggle aria-label="Pause the slideshow" aria-pressed="false">
+                <svg class="icon icon--fill" aria-hidden="true" focusable="false"><use href="#icon-pause"></use></svg>
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 
       <div class="container">
         <section class="search-panel" id="hero-search" aria-label="Property search">
-          <div class="search-tabs" role="group" aria-label="Buy or rent">
+          <div class="search-tabs" role="group" aria-label="Buy, rent or land">
             <button class="search-tab is-active" type="button" data-intent="sale" aria-pressed="true">Buy</button>
             <button class="search-tab" type="button" data-intent="rent" aria-pressed="false">Rent</button>
+            <button class="search-tab" type="button" data-intent="land" aria-pressed="false">Land</button>
           </div>
           <form class="search-form">
             <label class="field">
@@ -96,11 +130,25 @@
               <span>Property type</span>
               <select name="type">
                 <option value="">Any type</option>
-                <option>House</option>
-                <option>Apartment</option>
-                <option>Townhouse</option>
-                <option>Villa</option>
-                <option>Loft</option>
+                <optgroup label="Homes">
+                  <option data-group="home">House</option>
+                  <option data-group="home">Apartment</option>
+                  <option data-group="home">Townhouse</option>
+                  <option data-group="home">Villa</option>
+                  <option data-group="home">Loft</option>
+                </optgroup>
+                <optgroup label="Land">
+                  <option data-group="land">Virgin land</option>
+                  <option data-group="land">Residential land</option>
+                  <option data-group="land">Agricultural land</option>
+                  <option data-group="land">Commercial land</option>
+                  <option data-group="land">Industrial land</option>
+                  <option data-group="land">Beachfront land</option>
+                  <option data-group="land">Ranch land</option>
+                  <option data-group="land">Orchard land</option>
+                  <option data-group="land">Mixed-use land</option>
+                  <option data-group="land">Plot</option>
+                </optgroup>
               </select>
             </label>
             <label class="field">
@@ -246,6 +294,7 @@
               <li><a href="properties.html">Properties</a></li>
               <li><a href="properties.html?status=For+rent">To rent</a></li>
               <li><a href="contact.html">Book a valuation</a></li>
+              <li><a href="agent.html">Agent sign in</a></li>
             </ul>
           </div>
           <div class="footer-col">

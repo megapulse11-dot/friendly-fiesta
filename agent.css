@@ -1,0 +1,415 @@
+/*
+ * The agent portal.
+ *
+ * Small on purpose, and scoped to `.agents` - the class on agent.html's body.
+ *
+ *   - Colours, spacing and the .container, .brand, .field and .button classes
+ *     all come from styles.css. Reusing them means the portal picks up a change
+ *     to the brand automatically instead of drifting from it.
+ *   - Only the pieces the public site does not have are defined here: the
+ *     portal's own header, the listing cards, and the upload drawer. The drawer
+ *     pattern is copied from the admin panel, which styles it in admin.css -
+ *     a stylesheet this page must not load, because it is the panel's.
+ *   - Everything is scoped so that `.card`, which the public site already means
+ *     as a property card, cannot leak in either direction. `.agents .card`
+ *     outranks a bare `.card`, so the portal's definition wins here without
+ *     changing what the rest of the site means by the word.
+ */
+
+.agents {
+  background: var(--canvas);
+  min-height: 100vh;
+}
+
+/*
+ * An author `display` beats the browser's `[hidden] { display: none }`, so any
+ * element this page or styles.css gives a display to - `.drawer`, `.field`,
+ * `.cards` - stays on screen when the script sets `hidden` on it.
+ *
+ * styles.css handles this one element at a time (see `.currency-picker[hidden]`)
+ * and admin.css does the same (`.drawer[hidden]`). This page toggles a dozen
+ * elements - the drawer, both forms, the land fields, the sign-out button - so
+ * it is stated once for all of them rather than repeated twelve times.
+ *
+ * `!important` is deliberate and is the only use on this site: without it, a
+ * later rule with the same specificity would quietly reintroduce the bug.
+ */
+.agents [hidden] {
+  display: none !important;
+}
+
+/* ---- header --------------------------------------------------------------- */
+
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.topbar__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+}
+
+.topbar__nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.topbar__nav a {
+  color: var(--muted-strong);
+  font-size: 14.5px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.topbar__nav a:hover {
+  color: var(--brand);
+}
+
+.topbar__who {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Flex spacer, as the admin panel uses it. */
+.grow {
+  flex: 1;
+}
+
+/* ---- signed out ----------------------------------------------------------- */
+
+.agents__main {
+  padding: 32px 0 64px;
+}
+
+.gate {
+  display: grid;
+  place-items: start center;
+  padding-top: 24px;
+}
+
+.gate__card {
+  width: 100%;
+  max-width: 460px;
+  padding: 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.gate__card h1 {
+  margin: 0 0 4px;
+  font-size: 22px;
+}
+
+.gate__card .muted {
+  margin: 0 0 20px;
+  color: var(--muted-strong);
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+/* The sign-in / create-account switch, reusing the panel's tab styling. */
+.gate__card .tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.gate__card .tabs button {
+  flex: 1;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 14.5px;
+  color: var(--muted-strong);
+  cursor: pointer;
+}
+
+.gate__card .tabs button[aria-selected='true'] {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+  font-weight: 600;
+}
+
+.gate__card form .field {
+  margin-bottom: 14px;
+}
+
+.gate__card form .button {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.form-error {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: #fdecec;
+  border: 1px solid #f3c9c9;
+  color: #8a2020;
+  font-size: 14px;
+}
+
+/* ---- signed in ------------------------------------------------------------ */
+
+.desk__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.desk__head h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+
+.desk__head .muted {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 14.5px;
+}
+
+.notice {
+  padding: 28px 20px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--muted-strong);
+  text-align: center;
+}
+
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+/* Outranks the site's own `.card`, which is a property card with an image. */
+.agents .card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.agents .card__img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--surface-subtle);
+  display: block;
+  border: 0;
+  border-radius: 0;
+}
+
+.agents .card__img--none {
+  background: repeating-linear-gradient(45deg, var(--surface-subtle), var(--surface-subtle) 10px, var(--line) 10px, var(--line) 20px);
+}
+
+.agents .card__body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.agents .card__state {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  color: var(--muted-strong);
+}
+
+.agents .card__state--approved {
+  color: var(--brand);
+}
+
+.agents .card__state--rejected {
+  color: var(--danger);
+}
+
+.agents .card__title {
+  margin: 0;
+  font-size: 16.5px;
+  line-height: 1.35;
+}
+
+.agents .card__meta,
+.agents .card__price {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 14px;
+}
+
+.agents .card__note {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: #fdecec;
+  color: #8a2020;
+  font-size: 13.5px;
+}
+
+.agents .card__actions {
+  margin-top: auto;
+  padding-top: 14px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.agents .card__actions .button {
+  padding: 9px 14px;
+  font-size: 13.5px;
+}
+
+.button--danger {
+  color: var(--danger);
+  background: var(--surface);
+  border-color: #e3b6b6;
+}
+
+.button--danger:hover {
+  background: #fdecec;
+}
+
+/* ---- the upload drawer ---------------------------------------------------- */
+
+/* Copied from admin/admin.css, which this page must not load. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgb(12 18 22 / 45%);
+  z-index: 20;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(560px, 100%);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  z-index: 21;
+}
+
+.drawer__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.drawer__head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.drawer__foot {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--line);
+}
+
+/* styles.css styles `.field > span`; this form uses real <label> elements. */
+.drawer__body .field > label,
+.gate__card .field > label {
+  color: var(--muted-strong);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 14px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.row select {
+  flex: 0 0 120px;
+}
+
+/* ---- the file list while uploading --------------------------------------- */
+
+.thumbs {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.thumb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+}
+
+.thumb span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thumb__x {
+  border: 0;
+  background: none;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted-strong);
+}
+
+@media (max-width: 560px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .topbar__nav {
+    gap: 12px;
+  }
+}

@@ -28,7 +28,41 @@ let toastTimer;
 let drawer = null;
 let enquiries = [];
 
-const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+/* ---- currency ----------------------------------------------------------- */
+/*
+ * Prices live in the data as plain numbers in one base currency, and the panel
+ * always shows and accepts that currency — an editor changing a price has to be
+ * typing the number that will be saved, not a converted one. Choosing what the
+ * base is happens here; converting it for the reader happens on the website.
+ */
+const BASE_CURRENCIES = {
+  AUD: 'Australian Dollar', BRL: 'Brazilian Real', CAD: 'Canadian Dollar', CHF: 'Swiss Franc',
+  CNY: 'Chinese Yuan', CZK: 'Czech Koruna', DKK: 'Danish Krone', EUR: 'Euro',
+  GBP: 'British Pound', HKD: 'Hong Kong Dollar', HUF: 'Hungarian Forint', IDR: 'Indonesian Rupiah',
+  ILS: 'Israeli New Shekel', INR: 'Indian Rupee', ISK: 'Icelandic Krona', JPY: 'Japanese Yen', KES: 'Kenyan Shilling',
+  KRW: 'South Korean Won', MXN: 'Mexican Peso', MYR: 'Malaysian Ringgit', NOK: 'Norwegian Krone',
+  NZD: 'New Zealand Dollar', PHP: 'Philippine Peso', PLN: 'Polish Zloty', SEK: 'Swedish Krona',
+  SGD: 'Singapore Dollar', TRY: 'Turkish Lira', USD: 'US Dollar', ZAR: 'South African Rand'
+};
+
+const RATES_URL = 'https://api.frankfurter.app/latest';
+
+const moneyFormatters = new Map();
+function moneyFormatter(code) {
+  if (!moneyFormatters.has(code)) {
+    moneyFormatters.set(code, new Intl.NumberFormat('en', { style: 'currency', currency: code, maximumFractionDigits: 0 }));
+  }
+  return moneyFormatters.get(code);
+}
+
+/** The currency every stored price is in, falling back to USD if unset or invalid. */
+const baseCurrency = () => {
+  const code = String(data?.site?.currency || '').toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : 'USD';
+};
+
+const money = (amount) => moneyFormatter(baseCurrency()).format(Number(amount) || 0);
+
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[character]));
@@ -227,7 +261,7 @@ function renderListings() {
             <div class="row__meta">${escapeHtml(listing.address)}, ${escapeHtml(listing.city)} · ${listing.beds} bed · ${escapeHtml(listing.type)}</div>
           </div>
           <div><span class="pill ${statusClass(listing.status)}">${escapeHtml(listing.status)}</span>${listing.featured ? '<span class="pill pill--featured">Featured</span>' : ''}</div>
-          <div class="row__price">${listing.status === 'For rent' ? `${money.format(listing.price)}<span class="row__meta"> /mo</span>` : money.format(listing.price)}</div>
+          <div class="row__price">${listing.status === 'For rent' ? `${money(listing.price)}<span class="row__meta"> /mo</span>` : money(listing.price)}</div>
           <div class="row__actions">
             <button class="btn btn--secondary btn--sm" data-edit="${escapeHtml(listing.id)}" type="button">Edit</button>
             <button class="btn btn--danger btn--sm" data-delete="${escapeHtml(listing.id)}" type="button">Delete</button>
@@ -273,6 +307,13 @@ function renderOffices() {
 
 const settingFields = [
   { key: 'name', label: 'Company name', hint: 'Used in the logo, page titles and the footer.' },
+  {
+    key: 'currency',
+    label: 'Base currency',
+    type: 'select',
+    options: BASE_CURRENCIES,
+    hint: 'Every price on this site is stored in this currency, and this is what the editing panel shows you. Visitors can read the website in any other currency — it is converted for them with live reference rates, and the rate used is printed under the picker.'
+  },
   { key: 'tagline', label: 'Home page eyebrow', hint: 'The small line above the headline.' },
   { key: 'heroTitle', label: 'Home page headline', hint: 'HTML is allowed, e.g. Find the home that <em>actually</em> fits.' },
   { key: 'heroLead', label: 'Home page intro', hint: 'One or two sentences under the headline.' },
@@ -287,7 +328,21 @@ const settingFields = [
 
 function renderSettings() {
   $('#settings-form').innerHTML = settingFields.map((field) => {
-    const value = escapeHtml(data.site[field.key] ?? '');
+    const stored = data.site[field.key] ?? '';
+    const value = escapeHtml(stored);
+    if (field.type === 'select') {
+      // Compare against the raw stored value, not the escaped one, so a code
+      // that is not in the list keeps the field honest instead of silently
+      // snapping to whatever happens to be first.
+      const options = Object.entries(field.options)
+        .map(([code, name]) => `<option value="${code}"${code === stored ? ' selected' : ''}>${code} — ${escapeHtml(name)}</option>`)
+        .join('');
+      return `<div class="field field--full">
+        <span>${field.label}</span>
+        <select name="${field.key}">${options}</select>
+        ${field.hint ? `<small class="hint">${field.hint}</small>` : ''}
+      </div>`;
+    }
     if (field.type === 'color') {
       return `<div class="field field--full">
         <span>${field.label}</span>
@@ -304,6 +359,8 @@ function renderSettings() {
       ${field.hint ? `<small class="hint">${field.hint}</small>` : ''}
     </div>`;
   }).join('');
+
+  refreshCurrencyStatus();
 }
 
 $('#settings-form').addEventListener('input', (event) => {
@@ -317,18 +374,188 @@ $('#settings-form').addEventListener('input', (event) => {
     if (twin && /^#[0-9a-f]{6}$/i.test(field.value)) twin.value = field.value;
   }
   data.site[key] = field.value;
+  // The listings table prints every price in the base currency, so changing the
+  // base has to redraw them — and the status line below it quotes that currency.
+  if (key === 'currency') {
+    renderListings();
+    refreshCurrencyStatus();
+  }
   markDirty();
 });
+
+/**
+ * Say out loud what the website is converting with.
+ *
+ * The base currency on its own does not tell an editor whether a visitor in
+ * Tokyo is seeing today's rate or a month-old one, so this asks the same service
+ * the website asks and reports the date it got back. If the service is
+ * unreachable that is worth knowing too, because the site falls back to showing
+ * the base currency rather than guessing.
+ */
+async function refreshCurrencyStatus() {
+  const status = $('#currency-status');
+  if (!status) return;
+  const base = baseCurrency();
+  status.textContent = 'Checking live rates…';
+  try {
+    const response = await fetch(`${RATES_URL}?base=${encodeURIComponent(base)}`, { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error(String(response.status));
+    const payload = await response.json();
+    status.textContent = `Prices are stored in ${base}. Visitors who pick another currency are converted with European Central Bank reference rates published ${payload.date || 'recently'}, fetched by the website itself — there is nothing to configure here. Currencies the ECB does not publish, such as the Kenyan shilling, are converted with a second key-less service instead.`;
+  } catch {
+    status.textContent = `Could not reach frankfurter.app just now, so the rate date is unconfirmed. Prices are stored in ${base}, and the website shows them in ${base} until the service answers.`;
+  }
+}
 
 $$('.tabs button').forEach((tab) => tab.addEventListener('click', () => {
   $$('.tabs button').forEach((item) => item.setAttribute('aria-selected', String(item === tab)));
   $$('.panel').forEach((panel) => { panel.hidden = panel.id !== `panel-${tab.dataset.tab}`; });
   // Pick up anything submitted from the website while the panel was closed.
   if (tab.dataset.tab === 'enquiries') loadEnquiries();
+  // Submissions live on the worker rather than in a local file, so this tab is
+  // read from it on every visit instead of being rendered from `data`.
+  if (tab.dataset.tab === 'submissions') loadSubmissions();
 }));
 
 $('#listing-search').addEventListener('input', renderListings);
 $('#listing-status').addEventListener('change', renderListings);
+
+/* ---- submissions from agents ----------------------------------------------- */
+
+/*
+ * Homes and land uploaded by agents, held on the worker until they are approved.
+ *
+ * Unlike everything else in this panel these are not in `data` - they are read
+ * through the server from the worker each time the tab is opened. Approval is the
+ * moment a listing enters data.json and the site becomes static again.
+ */
+const SUBMISSION_STATE = {
+  pending: 'Waiting for you',
+  approved: 'Live',
+  rejected: 'Not approved'
+};
+
+async function loadSubmissions() {
+  const body = $('#submissions-body');
+  const hint = $('#submissions-hint');
+
+  try {
+    const payload = await api('/api/submissions');
+    renderSubmissions(payload.submissions || [], payload);
+  } catch (problem) {
+    hint.textContent = `Could not load submissions: ${problem.message}`;
+    hint.hidden = false;
+    body.innerHTML = '';
+  }
+}
+
+function renderSubmissions(items, payload) {
+  const body = $('#submissions-body');
+  const hint = $('#submissions-hint');
+  const badge = $('#submission-badge');
+
+  if (payload && payload.configured === false) {
+    hint.textContent =
+      'Set NW_WORKER_URL and NW_WORKER_TOKEN before starting the panel to review agent submissions.';
+    hint.hidden = false;
+  } else {
+    hint.hidden = true;
+  }
+
+  const pending = items.filter((item) => item.state === 'pending').length;
+  if (pending > 0) {
+    badge.textContent = String(pending);
+    badge.hidden = false;
+  } else {
+    badge.hidden = true;
+  }
+
+  if (!items.length) {
+    body.innerHTML = '<p class="hint">Nothing from agents yet.</p>';
+    return;
+  }
+
+  body.innerHTML = items
+    .map((item) => {
+      const listing = item.listing || {};
+      const agent = item.agent || {};
+      const decidable = item.state === 'pending';
+
+      const figures = [];
+      if (listing.price) figures.push(money(listing.price));
+      if (listing.beds) figures.push(`${listing.beds} bed`);
+      if (listing.lot) figures.push(listing.lot);
+      if (listing.area) figures.push(`${listing.area} m²`);
+
+      const photos = Array.isArray(item.photos) ? item.photos.length : 0;
+      const note = item.note ? `<p class="hint">Note: ${escapeHtml(item.note)}</p>` : '';
+
+      const actions = decidable
+        ? `<button class="btn btn--primary" data-approve="${escapeHtml(item.id)}">Approve and publish</button>
+           <button class="btn btn--secondary" data-reject="${escapeHtml(item.id)}">Reject</button>`
+        : `<span class="hint">${escapeHtml(SUBMISSION_STATE[item.state] || item.state)}</span>`;
+
+      return `<article class="row submission" data-state="${escapeHtml(item.state)}">
+        <div>
+          <p class="row__title">${escapeHtml(listing.title || '(no title)')}</p>
+          <p class="row__meta">
+            ${escapeHtml(listing.type || '')}
+            ${listing.city ? ' · ' + escapeHtml(listing.city) : ''}
+            · ${escapeHtml(listing.status || '')}
+          </p>
+          <p class="row__price">${escapeHtml(figures.join(' · '))}</p>
+          <p class="row__meta">From ${escapeHtml(agent.name || 'Unknown agent')} · ${escapeHtml(agent.email || '')}</p>
+          <p class="row__meta">${photos} photo${photos === 1 ? '' : 's'} · sent ${escapeHtml((item.createdAt || '').slice(0, 10))}</p>
+          ${note}
+        </div>
+        <div class="row__actions">${actions}</div>
+      </article>`;
+    })
+    .join('');
+}
+
+async function decideSubmission(id, verdict, note) {
+  try {
+    await api(`/api/submissions/${id}/${verdict}`, {
+      method: 'POST',
+      body: JSON.stringify({ note: note || '' })
+    });
+    // Approving rewrites data.json behind the panel's back, so the content it is
+    // holding is stale and has to be read again - otherwise the new listing would
+    // not appear under Listings until a reload.
+    if (verdict === 'approve') {
+      const fresh = await api('/api/state');
+      data = fresh.data;
+      markDirty(false);
+      renderAll();
+      announce('Approved. The listing is on the website.');
+    } else {
+      announce('Rejected, and the agent can read your note.');
+    }
+    await loadSubmissions();
+  } catch (problem) {
+    announce(problem.message);
+  }
+}
+
+$('#submissions-body').addEventListener('click', (event) => {
+  const target = event.target;
+
+  const approveId = target.dataset && target.dataset.approve;
+  if (approveId) {
+    decideSubmission(approveId, 'approve', '');
+    return;
+  }
+
+  const rejectId = target.dataset && target.dataset.reject;
+  if (rejectId) {
+    const note = window.prompt('Why is this being rejected? The agent will see this.') ?? '';
+    if (note.trim() === '') return;
+    decideSubmission(rejectId, 'reject', note.trim());
+  }
+});
+
+$('#submissions-refresh').addEventListener('click', () => loadSubmissions());
 
 /* ---- enquiries ----------------------------------------------------------- */
 const formatWhen = (value) => {
@@ -507,6 +734,60 @@ async function removeUnreferencedPhotos(paths) {
 /* ---- editors ------------------------------------------------------------ */
 const newId = (prefix) => `${prefix}${Date.now().toString(36)}`;
 
+/*
+ * The two categories the panel edits, mirroring HOME_TYPES / LAND_TYPES in the
+ * website's `app.js`. They are kept here rather than fetched because the panel
+ * has to render a type picker the instant it opens, and the site is served
+ * without JavaScript on the public side.
+ */
+const HOME_TYPES = ['House', 'Apartment', 'Townhouse', 'Villa', 'Loft'];
+const LAND_TYPES = [
+  'Virgin land',
+  'Residential land',
+  'Agricultural land',
+  'Commercial land',
+  'Industrial land',
+  'Beachfront land',
+  'Ranch land',
+  'Orchard land',
+  'Mixed-use land',
+  'Plot'
+];
+const ZONINGS = ['Residential', 'Commercial', 'Industrial', 'Agricultural', 'Mixed use', 'Recreational'];
+const TITLE_DEEDS = ['Freehold', 'Leasehold', 'Consent', 'Searching title'];
+const PLOT_UNITS = ['acres', 'hectares', 'sq m'];
+
+const isLandType = (type) => LAND_TYPES.includes(type);
+
+/** The type <select>, grouped the way the site's filter is grouped. */
+const typeOptions = (selected) => `
+  <optgroup label="Homes">${HOME_TYPES.map((type) => `<option${type === selected ? ' selected' : ''}>${type}</option>`).join('')}</optgroup>
+  <optgroup label="Land">${LAND_TYPES.map((type) => `<option${type === selected ? ' selected' : ''}>${type}</option>`).join('')}</optgroup>`;
+
+/*
+ * Swap the two specification fieldsets.
+ *
+ * A parcel of ground has no bedrooms and no build year, and an editor typing a
+ * price for twenty acres should not be asked for a bathroom count on the way -
+ * so the house fields are hidden outright rather than left to be zeroed by hand.
+ * The block is hidden with `hidden` and the inputs are disabled, because a
+ * disabled field is skipped when the drawer reads the form, which is what stops a
+ * stale number from a house being carried over onto a plot.
+ */
+const applyListingKind = (body, type) => {
+  const land = isLandType(type) || Boolean($('[name="plotAcres"]', body)?.value);
+  const houseBlock = $('[data-house-spec]', body);
+  const landBlock = $('[data-land-spec]', body);
+  if (houseBlock) {
+    houseBlock.hidden = land;
+    $$('input, select', houseBlock).forEach((input) => { input.disabled = land; });
+  }
+  if (landBlock) {
+    landBlock.hidden = !land;
+    $$('input, select', landBlock).forEach((input) => { input.disabled = !land; });
+  }
+};
+
 const listingTemplate = {
   id: '', title: '', address: '', city: 'Harbor Point', type: 'House', status: 'For sale',
   price: 500000, beds: 3, baths: 2, area: 1500, lot: '', year: new Date().getFullYear(), parking: 1,
@@ -537,12 +818,13 @@ function editListing(existing) {
         <label class="field"><span>Address</span><input name="address" value="${escapeHtml(draft.address)}" /></label>
         <label class="field"><span>City or area</span><input name="city" value="${escapeHtml(draft.city)}" /></label>
         <label class="field"><span>Property type</span>
-          <select name="type">${['House', 'Apartment', 'Townhouse', 'Villa', 'Loft'].map((type) => `<option${type === draft.type ? ' selected' : ''}>${type}</option>`).join('')}</select>
+          <select name="type" data-type>${typeOptions(draft.type)}</select>
+          <small class="hint">Choosing a land type swaps the specification below for plot size, zoning and title.</small>
         </label>
         <label class="field"><span>Status</span>
           <select name="status">${['For sale', 'For rent', 'Sold'].map((status) => `<option${status === draft.status ? ' selected' : ''}>${status}</option>`).join('')}</select>
         </label>
-        <label class="field"><span>Price (no commas)</span><input name="price" type="number" min="0" step="1000" value="${Number(draft.price) || 0}" required /></label>
+        <label class="field"><span>Price in ${baseCurrency()} — no commas</span><input name="price" type="number" min="0" step="1000" value="${Number(draft.price) || 0}" required /></label>
         <label class="field"><span>Listed on</span><input name="listed" type="date" value="${escapeHtml(draft.listed)}" /></label>
         <label class="field field--check"><input name="featured" type="checkbox"${draft.featured ? ' checked' : ''} /> <span>Feature on the home page</span></label>
       </div>
@@ -550,7 +832,7 @@ function editListing(existing) {
 
     <fieldset>
       <legend>Specification</legend>
-      <div class="form-grid">
+      <div class="form-grid" data-house-spec>
         <label class="field"><span>Bedrooms</span><input name="beds" type="number" min="0" value="${Number(draft.beds) || 0}" /></label>
         <label class="field"><span>Bathrooms</span><input name="baths" type="number" min="0" value="${Number(draft.baths) || 0}" /></label>
         <label class="field"><span>Floor area (ft²)</span><input name="area" type="number" min="0" value="${Number(draft.area) || 0}" /></label>
@@ -559,6 +841,25 @@ function editListing(existing) {
         <label class="field"><span>Parking spaces</span><input name="parking" type="number" min="0" value="${Number(draft.parking) || 0}" /></label>
         <label class="field field--full"><span>Listed by</span>
           <select name="agentId">${data.agents.map((agent) => `<option value="${escapeHtml(agent.id)}"${agent.id === draft.agentId ? ' selected' : ''}>${escapeHtml(agent.name)}</option>`).join('')}</select>
+        </label>
+      </div>
+
+      <div class="form-grid" data-land-spec>
+        <label class="field"><span>Plot size</span><input name="plotAcres" type="number" min="0" step="0.01" value="${Number(draft.land?.plotAcres) || ''}" placeholder="20" /></label>
+        <label class="field"><span>Unit</span>
+          <select name="plotUnit">${PLOT_UNITS.map((unit) => `<option${unit === (draft.land?.plotUnit || 'acres') ? ' selected' : ''}>${unit}</option>`).join('')}</select>
+        </label>
+        <label class="field"><span>Zoning</span>
+          <select name="zoning"><option value="">Not stated</option>${ZONINGS.map((z) => `<option${z === draft.land?.zoning ? ' selected' : ''}>${z}</option>`).join('')}</select>
+        </label>
+        <label class="field"><span>Title</span>
+          <select name="titleDeed"><option value="">Not stated</option>${TITLE_DEEDS.map((t) => `<option${t === draft.land?.titleDeed ? ' selected' : ''}>${t}</option>`).join('')}</select>
+        </label>
+        <label class="field field--full"><span>Access</span><input name="access" value="${escapeHtml(draft.land?.access || '')}" placeholder="e.g. Tarmac road frontage" /></label>
+        <label class="field field--full"><span>Landmarks</span><input name="landmarks" value="${escapeHtml(draft.land?.landmarks || '')}" placeholder="e.g. Fifteen minutes walk to the market" /></label>
+        <label class="field field--full"><span>Utilities</span><input name="utilities" value="${escapeHtml(draft.land?.utilities || '')}" placeholder="e.g. Power and water at the street" /></label>
+        <label class="field field--full"><span>Listed by</span>
+          <select name="landAgentId" data-agent-mirror>${data.agents.map((agent) => `<option value="${escapeHtml(agent.id)}"${agent.id === draft.agentId ? ' selected' : ''}>${escapeHtml(agent.name)}</option>`).join('')}</select>
         </label>
       </div>
     </fieldset>
@@ -592,28 +893,61 @@ function editListing(existing) {
     onApply: () => {
       const body = $('#drawer-body');
       const value = (name) => ($(`.field [name="${name}"]`, body)?.value ?? '').trim();
+      const type = value('type');
+      const land = isLandType(type);
+
+      // "Listed by" appears in both specification blocks, so only one of the two
+      // selects is enabled at a time. Read whichever is live rather than assuming
+      // the house one.
+      const agentId = value(land ? 'landAgentId' : 'agentId') || value('agentId') || value('landAgentId');
+
       const updated = {
         ...draft,
         title: value('title') || 'Untitled listing',
         address: value('address'),
         city: value('city'),
-        type: value('type'),
+        type,
         status: value('status'),
         price: Number(value('price')) || 0,
         listed: value('listed'),
         featured: $('[name="featured"]', body).checked,
-        beds: Number(value('beds')) || 0,
-        baths: Number(value('baths')) || 0,
-        area: Number(value('area')) || 0,
+        // A parcel of ground has no rooms and no floor area, so those are written
+        // as zero rather than left holding whatever the block still showed.
+        beds: land ? 0 : Number(value('beds')) || 0,
+        baths: land ? 0 : Number(value('baths')) || 0,
+        area: land ? 0 : Number(value('area')) || 0,
         lot: value('lot'),
-        year: Number(value('year')) || 0,
-        parking: Number(value('parking')) || 0,
-        agentId: value('agentId'),
+        year: land ? 0 : Number(value('year')) || 0,
+        parking: land ? 0 : Number(value('parking')) || 0,
+        agentId,
         description: value('description'),
         images: [...draft.images],
         image: draft.images[0] || 'assets/homes/property-01.svg',
         features: [...draft.features]
       };
+
+      if (land) {
+        const plotAcres = Number(value('plotAcres')) || 0;
+        updated.land = {
+          plotAcres,
+          plotUnit: value('plotUnit') || 'acres',
+          zoning: value('zoning'),
+          titleDeed: value('titleDeed'),
+          access: value('access'),
+          landmarks: value('landmarks'),
+          utilities: value('utilities')
+        };
+        // Keep `lot` agreeing with the numeric plot, since it is what the app reads.
+        if (plotAcres > 0) {
+          const unit = updated.land.plotUnit === 'hectares' ? 'hectares' : updated.land.plotUnit === 'sq m' ? 'm²' : 'acres';
+          updated.lot = `${plotAcres} ${unit}`;
+        }
+      } else {
+        // Dropping the block entirely is what stops a house from being treated as
+        // land by the site, which keys off both the type and the land block.
+        delete updated.land;
+      }
+
       const index = data.listings.findIndex((item) => item.id === draft.id);
       if (index === -1) data.listings.unshift(updated);
       else data.listings[index] = updated;
@@ -627,6 +961,22 @@ function editListing(existing) {
 
 function wireListingDrawer(draft) {
   const body = $('#drawer-body');
+
+  // Pick the right specification block for the type already on the listing, and
+  // keep picking it as the editor changes type.
+  const typeControl = $('[data-type]', body);
+  if (typeControl) {
+    applyListingKind(body, typeControl.value);
+    typeControl.addEventListener('change', () => applyListingKind(body, typeControl.value));
+  }
+
+  // Both blocks carry a "Listed by", and only one is enabled at a time, so a
+  // change in either has to be reflected in the other or the agent silently
+  // changes back depending on which block was open when the drawer was applied.
+  const agentMirrors = [$('[name="agentId"]', body), $('[data-agent-mirror]', body)].filter(Boolean);
+  agentMirrors.forEach((control) => control.addEventListener('change', () => {
+    agentMirrors.forEach((other) => { if (other !== control) other.value = control.value; });
+  }));
 
   const refreshPhotos = () => { $('#photo-list', body).innerHTML = renderPhotos(draft); };
   const refreshFeatures = () => { $('#feature-tags', body).innerHTML = renderFeatures(draft); };

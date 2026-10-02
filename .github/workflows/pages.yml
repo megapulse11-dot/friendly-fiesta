@@ -39,8 +39,14 @@ jobs:
           mkdir -p "$site"
 
           # Pages, scripts and styles that make up the public site.
+          #
+          # agent.html is the agent portal - sign in, upload, manage listings. It
+          # is static like everything else here; the uploads go to the worker, not
+          # to this site. Its listing script is listed separately because it is
+          # only ever used by that one page.
           for file in index.html properties.html property.html contact.html \
-                      app.js styles.css data.js favicon.svg; do
+                      app.js styles.css data.js favicon.svg \
+                      agent.html agent.js agent.css; do
             if [ ! -f "$file" ]; then
               echo "::error::Missing $file - the site would break."
               exit 1

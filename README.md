@@ -1,6 +1,12 @@
 # Northwind Realty
 
-A modern, responsive website template for a real estate agency — four pages, semantic HTML, hand-written CSS and vanilla JavaScript. No build step, no framework, no third-party runtime dependencies, and no remote requests.
+A modern, responsive website template for a real estate agency — four pages, semantic HTML, hand-written CSS and vanilla JavaScript. No build step, no framework and no third-party runtime dependencies.
+
+> **Agents upload their own listings** — see [AGENTS.md](AGENTS.md). Agents sign in
+> at `/agent.html`, upload homes and land, and edit or delete their own uploads.
+> Nothing reaches the public site until you approve it in the admin panel.
+
+The site makes no remote requests for its own content. It makes **one** for exchange rates, and only if you turn on the currency picker: see [Currency](#currency) below. Without that, it works with no network at all.
 
 ## Run it
 
@@ -14,11 +20,95 @@ Then visit [http://localhost:8000](http://localhost:8000).
 
 ## What's included
 
-- **Home** — hero with a buy/rent search panel, featured listings, live statistics, services, team, testimonials and a call to action
-- **Properties** — filter by keyword, listing type, property type, bedrooms and budget; sort by price, date or size; removable filter chips; grid/list toggle; "show more" paging; an empty state
+- **Home** — hero with a buy/rent/land search panel, featured listings, live statistics, services, team, testimonials and a call to action
+- **Properties** — filter by keyword, category (homes or land), listing type, property type, bedrooms and budget; sort by price, date or size; removable filter chips; grid/list toggle; "show more" paging; an empty state
 - **Property detail** — gallery with thumbnails, specification grid, features, sticky agent card, similar homes, share button and a "book a viewing" dialog
 - **Contact** — validated enquiry form, three offices rendered from the same dataset, and an FAQ accordion
-- **Cross-cutting** — saved homes (heart buttons) persisted in `localStorage`, filters mirrored into the URL so results are shareable, toast notifications, mobile navigation drawer, semantic landmarks, visible focus states, `prefers-reduced-motion` support
+- **Cross-cutting** — saved homes (heart buttons) persisted in `localStorage`, filters mirrored into the URL so results are shareable, a currency picker that converts every price, toast notifications, mobile navigation drawer, semantic landmarks, visible focus states, `prefers-reduced-motion` support
+
+## Land
+
+Land is a category of its own, not just another property type, because a parcel
+of ground has none of the figures a house is described by. It carries:
+
+| | Houses | Land |
+|---|---|---|
+| Headline figure | Floor area (`area`) | Plot size (`land.plotAcres`, read in `land.plotUnit`) |
+| Also shown | Bedrooms, bathrooms, year built, parking | Zoning, title, access, landmarks, utilities |
+| Bedroom filter | Applies | Hidden — there are none |
+
+**Land types:** Virgin land, Residential land, Agricultural land, Commercial
+land, Industrial land, Beachfront land, Ranch land, Orchard land, Mixed-use
+land, Plot. They live in `LAND_TYPES` in `app.js`, mirrored by the panel in
+`admin/admin.js` and the app in `src/lib/filters.ts`.
+
+A listing is treated as land when its `type` is one of those, **or** when it
+carries a `land` block — so a parcel saved before the plot fields existed still
+renders as land, falling back to the free-text `lot` for its size.
+
+```jsonc
+{
+  "type": "Virgin land",
+  "lot": "20 acres",          // kept in step with plotAcres by the panel
+  "beds": 0, "baths": 0,      // a parcel has no rooms, so these are zero
+  "area": 0, "year": 0,
+  "land": {
+    "plotAcres": 20,          // numeric, so filters and sorting can compare it
+    "plotUnit": "acres",      // 'acres' | 'hectares' | 'sq m'
+    "zoning": "Agricultural",
+    "titleDeed": "Freehold",
+    "access": "Graded dirt road",
+    "landmarks": "Ridge line with valley views to the south",
+    "utilities": "Grid power at the boundary"
+  }
+}
+```
+
+Filtering by `kind=land` on the results page drops the bedroom control and trims
+the type list to land, and land gets its own budget bands because a parcel is
+priced on its size and paperwork rather than its rooms.
+
+## Currency
+
+Prices are stored once, in a single **base currency**, and shown in whichever
+currency the visitor picks. The base is set in the admin panel under **Site
+settings → Base currency**; it is also what the panel itself shows you, so an
+editor is always typing the number that will be saved.
+
+The picker in the header converts using live rates from
+[frankfurter.app](https://frankfurter.app), a free service that needs no account
+or API key and republishes the European Central Bank's daily reference rates.
+The rate date is printed under the picker whenever a conversion is on screen, so
+the number is never explained. The choice is remembered in `localStorage`.
+
+The ECB publishes reference rates for 30 currencies, which is not every currency
+a property site might be read in. Anything outside that set — the Kenyan shilling
+(`KES`) among them — is converted using [open.er-api.com](https://www.exchangerate-api.com),
+which is also key-less and covers around 160 currencies. It is only consulted for
+codes the ECB set cannot quote, and a non-USD base currency is reached by crossing
+two of its dollar rates. The date printed under the picker always belongs to the
+service the displayed number actually came from.
+
+Two things worth knowing:
+
+- **Filtering is unaffected.** Budget bands, sorting and shared URLs all work in
+  base-currency numbers, so a link means the same thing in every currency. Only
+  the wording changes.
+- **If the rates cannot be fetched the site stays honest.** Prices fall back to
+  the base currency rather than showing an unconverted number with a foreign
+  symbol, the picker says which currency it fell back to, and the confirmation
+  names the currency the reader is actually looking at. Each request is wrapped in
+  a 7-second timeout, and any of them failing leaves the rest of the page working.
+
+To use a different rate source, or to self-host one, point `RATES_URL` and
+`CURRENCY_NAMES_URL` at the top of the currency block in `app.js` at something
+returning `{ base, date, rates: { CODE: number } }`. The second source is
+`SUPPLEMENT_RATES_URL`, and expects `{ result: "success", time_last_update_unix,
+rates: { CODE: number } }` quoted against USD; set it to an empty string to turn
+that fallback off.
+
+ECB rates are published on working days only, so a rate shown at the weekend is
+the most recent working day's.
 
 ## Project structure
 

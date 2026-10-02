@@ -50,8 +50,14 @@
           <a href="index.html" data-nav="home">Home</a>
           <a href="properties.html" data-nav="properties">Properties</a>
           <a href="contact.html" data-nav="contact">Contact</a>
+          <a href="agent.html" data-nav="agents">Agents</a>
         </nav>
         <div class="header-actions">
+          <div class="currency-picker" data-currency-picker hidden>
+            <label class="sr-only" for="currency-select">Show prices in</label>
+            <select id="currency-select" data-currency-select></select>
+            <small class="currency-note" data-currency-note hidden></small>
+          </div>
           <a class="button button--primary" href="properties.html">Browse homes</a>
           <button class="icon-button menu-button" type="button" data-menu-toggle aria-label="Open menu" aria-expanded="false" aria-controls="primary-navigation">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-menu"></use></svg>
@@ -107,7 +113,7 @@
                 </label>
                 <label class="field">
                   <span>Budget or area</span>
-                  <input name="detail" type="text" placeholder="e.g. up to $1.2M near the quay" />
+                  <input name="detail" type="text" placeholder="e.g. up to 1.2M near the quay" />
                 </label>
                 <label class="field">
                   <span>Preferred contact</span>
@@ -192,6 +198,7 @@
               <li><a href="properties.html">Properties</a></li>
               <li><a href="properties.html?status=For+rent">To rent</a></li>
               <li><a href="contact.html">Book a valuation</a></li>
+              <li><a href="agent.html">Agent sign in</a></li>
             </ul>
           </div>
           <div class="footer-col">
