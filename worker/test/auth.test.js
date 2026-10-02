@@ -288,3 +288,86 @@ test('anything that is not an image is refused', () => {
   assert.equal(identify(svg.buffer.slice(0, 12)), null);
   assert.equal(identify(bytes(1, 2, 3)), null);
 });
+
+/* ---- short stays ---------------------------------------------------------- */
+
+const goodRental = Object.assign({}, goodHouse, {
+  status: 'For rent',
+  price: 2_600
+});
+
+test('a listing with no stays keeps none', () => {
+  const result = validateListing(Object.assign({}, goodRental, { stays: [] }));
+  assert.equal(result.ok, true);
+  assert.equal(result.value.stays, undefined);
+});
+
+test('recognised stays are kept in a fixed order, whatever order they arrive in', () => {
+  const result = validateListing(Object.assign({}, goodRental, { stays: ['Monthly', 'Nightly'] }));
+  assert.deepEqual(result.value.stays, ['Nightly', 'Monthly']);
+});
+
+test('an unrecognised stay term is dropped rather than stored', () => {
+  const result = validateListing(Object.assign({}, goodRental, { stays: ['Nightly', 'Fortnightly'] }));
+  assert.deepEqual(result.value.stays, ['Nightly']);
+});
+
+test('stays that are not an array are ignored', () => {
+  const result = validateListing(Object.assign({}, goodRental, { stays: 'Nightly' }));
+  assert.equal(result.ok, true);
+  assert.equal(result.value.stays, undefined);
+});
+
+test('a nightly rate is stored when given as a number or a string', () => {
+  assert.equal(validateListing(Object.assign({}, goodRental, { stays: ['Nightly'], nightly: 95 })).value.nightly, 95);
+  assert.equal(validateListing(Object.assign({}, goodRental, { stays: ['Nightly'], nightly: ' 95 ' })).value.nightly, 95);
+});
+
+test('a blank nightly rate is left out rather than stored as zero', () => {
+  // The website derives anything missing from the monthly price, so storing a
+  // zero here would suppress that derivation and show a free night.
+  const result = validateListing(Object.assign({}, goodRental, { stays: ['Weekly'] }));
+  assert.equal(result.value.nightly, undefined);
+  assert.equal(result.value.weekly, undefined);
+});
+
+test('rates without a stay are dropped, because nothing would show them', () => {
+  const result = validateListing(Object.assign({}, goodRental, { nightly: 95 }));
+  assert.equal(result.ok, true);
+  assert.equal(result.value.nightly, undefined);
+});
+
+test('a minimum stay is only kept inside a sane range', () => {
+  const ok = validateListing(Object.assign({}, goodRental, { stays: ['Weekly'], minNights: 3 }));
+  assert.equal(ok.value.minNights, 3);
+  const zero = validateListing(Object.assign({}, goodRental, { stays: ['Weekly'], minNights: 0 }));
+  assert.equal(zero.value.minNights, undefined);
+  const absurd = validateListing(Object.assign({}, goodRental, { stays: ['Weekly'], minNights: 9999 }));
+  assert.equal(absurd.value.minNights, undefined);
+});
+
+test('availability dates are kept only when they are real calendar dates', () => {
+  const ok = validateListing(Object.assign({}, goodRental, { availableFrom: '2026-09-25' }));
+  assert.equal(ok.value.availableFrom, '2026-09-25');
+
+  for (const bad of ['next Friday', '2026-13-45', '25/09/2026', '', '2026-02-30', 20260925]) {
+    const result = validateListing(Object.assign({}, goodRental, { availableFrom: bad }));
+    assert.equal(result.ok, true, `${JSON.stringify(bad)} should not fail the whole listing`);
+    assert.equal(result.value.availableFrom, undefined, `${JSON.stringify(bad)} should not be stored`);
+  }
+});
+
+test('an agent cannot mark their own listing as a hot deal', () => {
+  // A promotion is a commercial decision with a date on it, and it puts the
+  // listing in the loudest slot on the home page. It is the office's to set.
+  const result = validateListing(Object.assign({}, goodRental, { hot: true, hotUntil: '2099-01-01' }));
+  assert.equal(result.ok, true);
+  assert.equal(result.value.hot, undefined);
+  assert.equal(result.value.hotUntil, undefined);
+});
+
+test('an agent cannot feature their own listing either, still', () => {
+  const result = validateListing(Object.assign({}, goodRental, { stays: ['Nightly'], featured: true, hot: true }));
+  assert.equal(result.value.featured, false);
+  assert.equal(result.value.hot, undefined);
+});

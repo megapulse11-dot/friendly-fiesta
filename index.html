@@ -130,9 +130,10 @@
 
       <div class="container">
         <section class="search-panel" id="hero-search" aria-label="Property search">
-          <div class="search-tabs" role="group" aria-label="Buy, rent or land">
+          <div class="search-tabs" role="group" aria-label="Buy, rent, short stay or land">
             <button class="search-tab is-active" type="button" data-intent="sale" aria-pressed="true">Buy</button>
             <button class="search-tab" type="button" data-intent="rent" aria-pressed="false">Rent</button>
+            <button class="search-tab" type="button" data-intent="short" aria-pressed="false">Short stay</button>
             <button class="search-tab" type="button" data-intent="land" aria-pressed="false">Land</button>
           </div>
           <form class="search-form">
@@ -187,6 +188,24 @@
             </a>
           </div>
           <div class="card-grid" id="featured-grid"></div>
+        </div>
+      </section>
+
+      <!-- Promotions. The whole section hides itself when nothing is on offer,
+           so the page does not carry an empty heading waiting for a deal to exist. -->
+      <section class="section section--tight" id="hot-section" aria-labelledby="hot-title" hidden>
+        <div class="container">
+          <div class="section-head section-head--split">
+            <div>
+              <p class="eyebrow">Limited time</p>
+              <h2 class="section-title" id="hot-title">Hot deals</h2>
+              <p class="section-lead">Reduced rates on a fixed window — nights, weeks and months at prices we would not normally run.</p>
+            </div>
+            <a class="section-link" href="properties.html?hot=1&amp;sort=featured">Every hot deal
+              <svg class="icon icon--sm" aria-hidden="true" focusable="false"><use href="#icon-arrow-right"></use></svg>
+            </a>
+          </div>
+          <div class="hot-strip" id="hot-grid"></div>
         </div>
       </section>
 

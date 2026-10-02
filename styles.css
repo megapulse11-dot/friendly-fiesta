@@ -30,6 +30,10 @@
   --danger: #a5443a;
   --danger-soft: #f7e9e7;
   --danger-line: #f3c9c9;
+  /* A promotion has to read as urgent without reading as an error, so it gets its
+     own hue: warmer and brighter than --accent, and clearly not --danger. */
+  --hot: #c2451f;
+  --hot-soft: #fdeee7;
   --shadow: 0 1px 2px rgb(24 30 38 / 3%), 0 6px 18px rgb(24 30 38 / 4%);
   --shadow-lg: 0 2px 6px rgb(24 30 38 / 4%), 0 18px 40px rgb(24 30 38 / 8%);
   --radius: 14px;
@@ -113,8 +117,9 @@
     --on-solid: #06231f;
     --danger: #e0766c;
     --danger-soft: #2e1c1a;
-  --danger-line: #5a2f2a;
     --danger-line: #5a2f2a;
+    --hot: #ff8f66;
+    --hot-soft: #35201a;
     --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 6px 18px rgb(0 0 0 / 34%);
     --shadow-lg: 0 2px 6px rgb(0 0 0 / 34%), 0 18px 40px rgb(0 0 0 / 44%);
     --surface-hover: #1c2428;
@@ -146,6 +151,8 @@
   --danger: #e0766c;
   --danger-soft: #2e1c1a;
   --danger-line: #5a2f2a;
+  --hot: #ff8f66;
+  --hot-soft: #35201a;
   --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 6px 18px rgb(0 0 0 / 34%);
   --shadow-lg: 0 2px 6px rgb(0 0 0 / 34%), 0 18px 40px rgb(0 0 0 / 44%);
   --surface-hover: #1c2428;
@@ -283,6 +290,104 @@ input[name="botcheck"] { position: absolute; left: -9999px; width: 1px; height: 
 .badge--accent { color: var(--accent-ink); background: var(--accent-soft); }
 .badge--solid { color: var(--on-solid); background: var(--brand); }
 .badge--muted { color: var(--muted-strong); background: var(--badge-float); }
+/* Hot deals. The badge is deliberately the loudest thing on a card, because the
+   whole point of the flag is that it gets noticed. It is still a badge and not a
+   ribbon so it sits in the same row as the rest rather than fighting them. */
+.badge--hot { color: #fff; background: var(--hot); letter-spacing: .6px; }
+.badge--hot::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: hot-pulse 2.4s ease-in-out infinite;
+}
+@keyframes hot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+/* The pulse is the one thing on the page that moves without being asked to, so it
+   is switched off with the rest of the motion for anybody who asked for that. */
+@media (prefers-reduced-motion: reduce) {
+  .badge--hot::before { animation: none; }
+}
+
+/* A hot card gets a warm edge rather than a bigger one: the card grid is
+   auto-fill, so a card that grew would change the number of columns. */
+.card--hot { border-color: var(--hot); box-shadow: 0 0 0 1px var(--hot), var(--shadow); }
+.card--hot:hover { box-shadow: 0 0 0 1px var(--hot), var(--shadow-lg); }
+
+/* Short stays. The night rate leads because it is the one a weekend is compared
+   on; the week and month sit beside it in the quieter ink. */
+.card-price--stay { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.card-price--stay strong { font-weight: 700; }
+.card-price--stay span { color: var(--muted); font-size: 14px; font-weight: 500; }
+.card-stay {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.card-stay .icon { color: var(--hot); }
+
+/* The rates table on a detail page. */
+.rates { margin: 26px 0 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.rates-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; background: var(--surface); }
+.rates-row + .rates-row { border-top: 1px solid var(--line); }
+.rates-row dt { color: var(--muted-strong); font-size: 13.5px; font-weight: 600; }
+.rates-row dd { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.3px; }
+.rates-note { display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); color: var(--muted); background: var(--surface-subtle); font-size: 13px; }
+
+/* The hot banner on a detail page, and the strip on the home page. */
+.hot-banner {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 20px;
+  padding: 13px 18px;
+  border: 1px solid var(--hot);
+  border-radius: var(--radius-sm);
+  color: var(--hot);
+  background: var(--hot-soft);
+  font-size: 14px;
+  font-weight: 600;
+}
+.hot-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 26px; }
+.hot-empty { color: var(--muted); font-size: 15px; }
+/* The shortcut into just the promotions, sitting where the sort control is so it
+   reads as a way of arranging the results rather than a separate page. */
+.hot-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border: 1px solid var(--hot);
+  border-radius: 999px;
+  color: var(--hot);
+  background: var(--hot-soft);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+.hot-link:hover { background: color-mix(in srgb, var(--hot) 14%, var(--hot-soft)); }
+.hot-link::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+/* The short-stay panel on the agent upload form. A fieldset because the boxes
+   and the rates belong together as one question, and the legend is what a screen
+   reader announces when focus lands in there. */
+.short-stay { margin: 18px 0 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.short-stay[hidden] { display: none; }
+.short-stay legend { padding: 0 6px; color: var(--muted-strong); font-size: 12.5px; font-weight: 700; letter-spacing: .3px; }
+.short-stay .field-hint { margin: 0 0 14px; }
+/* A row of checkboxes that reads as one question. Used by the agent form's short
+   stays and by the same panel in the admin editor, so it lives here rather than
+   in either stylesheet. */
+.check-row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; }
+.check-row .field--check { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; white-space: nowrap; }
+[data-stay-only][hidden] { display: none; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+@media (max-width: 560px) { .grid-3 { grid-template-columns: 1fr; } }
 
 /* 4. hero & search -------------------------------------------------------- */
 /* The hero background used to be a flat green wash. The property slideshow now

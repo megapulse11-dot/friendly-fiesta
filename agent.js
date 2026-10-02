@@ -271,6 +271,31 @@ function applyCategory() {
   $('#home-fields').hidden = land;
   $('#land-fields').hidden = !land;
   $('#wrap-plot').hidden = !land;
+  applyStayVisibility();
+}
+
+/**
+ * Short stays belong to rentals.
+ *
+ * A sale price with a nightly rate beside it means nothing, and a bundle of
+ * empty date boxes on a form for a house someone is selling is noise. So the
+ * whole panel follows the status, and the price label follows it too - "monthly
+ * rent" and "asking price" are the same field with very different meanings.
+ */
+function applyStayVisibility() {
+  const isRent = $('#f-status').value === 'For rent';
+  const land = $('#f-category').value === 'land';
+  const panel = $('#stay-fields');
+  const hint = $('#f-price-hint');
+  if (hint) hint.textContent = isRent ? 'monthly rent' : land ? 'asking price' : 'price';
+  if (!panel) return;
+  panel.hidden = !isRent || land;
+  // Anything filled in while the panel was open must not survive being hidden,
+  // or a sale would be submitted carrying rates the website will never show.
+  if (panel.hidden) {
+    $$('input[type="checkbox"]', panel).forEach((box) => { box.checked = false; });
+    ['#f-nightly', '#f-weekly', '#f-from', '#f-to'].forEach((id) => { if ($(id)) $(id).value = ''; });
+  }
 }
 
 function fillTypes(selected) {
@@ -284,6 +309,8 @@ $('#f-category').addEventListener('change', () => {
   applyCategory();
   fillTypes();
 });
+
+$('#f-status').addEventListener('change', applyStayVisibility);
 
 function renderThumbs(files) {
   $('#thumbs').innerHTML = files
@@ -401,6 +428,22 @@ function collectListing() {
     listing.baths = number('#f-baths');
     listing.area = number('#f-area');
     listing.year = number('#f-year');
+  }
+
+  /*
+   * Short stays, sent only when the agent has actually said something about
+   * them. The worker drops anything it does not recognise and refuses to store
+   * rates on a listing with no terms at all, so an untouched form sends nothing
+   * rather than sending a row of zeroes.
+   */
+  const stays = $$('input[name="stays"]:checked', $('#stay-fields') || document).map((box) => box.value);
+  if (stays.length && !land && $('#f-status').value === 'For rent') {
+    listing.stays = stays;
+    if (number('#f-nightly')) listing.nightly = number('#f-nightly');
+    if (number('#f-weekly')) listing.weekly = number('#f-weekly');
+    if (number('#f-min-nights') > 1) listing.minNights = number('#f-min-nights');
+    if (text('#f-from')) listing.availableFrom = text('#f-from');
+    if (text('#f-to')) listing.availableTo = text('#f-to');
   }
 
   return listing;

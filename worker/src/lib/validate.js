@@ -110,6 +110,43 @@ export function featureList(value) {
 /** A listing is land when its type says so, matching isLand() in app.js. */
 export const isLandType = (type) => LAND_TYPES.includes(type);
 
+/**
+ * The lengths of stay a listing will accept, in the order the site shows them.
+ *
+ * Anything unrecognised is dropped rather than stored. An agent can send any
+ * JSON they like, and a term nobody recognises would be a string the website
+ * silently ignores while still deciding the listing is a short stay - which is
+ * exactly the kind of half-state that shows up later as an empty rates table.
+ */
+export const STAY_TERMS = ['Nightly', 'Weekly', 'Monthly'];
+
+export function stayTerms(value) {
+  if (!Array.isArray(value)) return [];
+  const wanted = new Set(value.map((term) => (typeof term === 'string' ? term.trim() : '')));
+  return STAY_TERMS.filter((term) => wanted.has(term));
+}
+
+/**
+ * An ISO calendar date, or nothing.
+ *
+ * Checked rather than cleaned, because this ends up in a Date and a string like
+ * "next Friday" or "2026-13-45" would become a real date on the page or an
+ * Invalid Date that renders as "NaN".
+ *
+ * The round trip has to be compared, not merely taken. JavaScript does not
+ * reject an impossible day - `new Date('2026-02-30')` is the 2nd of March, not
+ * an Invalid Date - so parsing alone would quietly accept 30 February and store
+ * a date nobody wrote. Reading the value back out and requiring it to match is
+ * what actually rejects it.
+ */
+export function isoDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return null;
+  const trimmed = value.trim();
+  const parsed = new Date(`${trimmed}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10) === trimmed ? trimmed : null;
+}
+
 /* ---- a listing ------------------------------------------------------------ */
 
 /**
@@ -166,6 +203,37 @@ export function validateListing(body) {
     features: featureList(source.features),
     images: []
   };
+
+  /*
+   * Short stays and promotions.
+   *
+   * Both are optional, and both are dropped rather than rejected when they do
+   * not make sense: an agent filling in a rental form is not trying to break
+   * anything, and refusing a whole listing because a nightly rate was left
+   * blank would be a worse outcome than storing a listing without one.
+   *
+   * The same reasoning keeps `hot` away from the agent. A promotion is a
+   * commercial decision with a date attached, and the office is the only body
+   * that should be setting "this is hot until the 20th".
+   */
+  const stays = stayTerms(source.stays);
+  if (stays.length) {
+    value.stays = stays;
+    // A nightly or weekly rate is only stored when it is actually a number. The
+    // website derives anything left out from the monthly price, so a blank here
+    // is a valid answer rather than a missing one.
+    const nightly = priceValue(source.nightly);
+    const weekly = priceValue(source.weekly);
+    if (nightly !== null) value.nightly = nightly;
+    if (weekly !== null) value.weekly = weekly;
+    const minNights = wholeNumber(source.minNights, 1, 365, 0);
+    if (minNights) value.minNights = minNights;
+  }
+
+  const availableFrom = isoDate(source.availableFrom);
+  if (availableFrom) value.availableFrom = availableFrom;
+  const availableTo = isoDate(source.availableTo);
+  if (availableTo) value.availableTo = availableTo;
 
   /*
    * A parcel has no rooms, so bedrooms, bathrooms, floor area, year and parking

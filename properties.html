@@ -152,6 +152,15 @@
                 <option value="4">4+</option>
               </select>
             </label>
+            <label class="field" data-term-field hidden>
+              <span>Length of stay</span>
+              <select name="term">
+                <option value="">Any length</option>
+                <option value="Nightly">A night or two</option>
+                <option value="Weekly">A week</option>
+                <option value="Monthly">A month or more</option>
+              </select>
+            </label>
             <label class="field">
               <span>Budget</span>
               <select name="budget">
@@ -169,6 +178,7 @@
           <div class="filter-tools">
             <p class="result-count" id="result-count" role="status" aria-live="polite">Loading listings…</p>
             <div class="filter-tools filter-tools--wide">
+              <a class="hot-link" href="properties.html?hot=1&amp;sort=featured">Hot deals</a>
               <label class="field field--inline">
                 <span>Sort</span>
                 <select class="select--compact" name="sort">

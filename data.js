@@ -13,7 +13,7 @@ const NORTHWIND = {
                  "phone":  "+1 (555) 014-2200",
                  "footerNote":  "Independent estate agency for Harbor Point, Northgate and Elmwood. Selling, buying and renting since 1998.",
                  "copyright":  " 2026 Northwind Realty. Sample content for demonstration.",
-                 "contentVersion":  "7"
+                 "contentVersion":  "10"
              },
     "listings":  [
                      {
@@ -161,7 +161,16 @@ const NORTHWIND = {
                                                null,
                                                null,
                                                null
-                                           ]
+                                           ],
+                         "stays":  [
+                                       "Monthly",
+                                       "Weekly"
+                                   ],
+                         "weekly":  420,
+                         "minNights":  1,
+                         "hot":  true,
+                         "hotUntil":  "2026-10-20",
+                         "availableFrom":  "2026-09-25"
                      },
                      {
                          "id":  "p4",
@@ -416,7 +425,16 @@ const NORTHWIND = {
                                                null,
                                                null,
                                                null
-                                           ]
+                                           ],
+                         "stays":  [
+                                       "Nightly",
+                                       "Weekly",
+                                       "Monthly"
+                                   ],
+                         "nightly":  95,
+                         "weekly":  560,
+                         "minNights":  2,
+                         "availableTo":  "2027-01-15"
                      },
                      {
                          "id":  "p9",
@@ -624,6 +642,93 @@ const NORTHWIND = {
                          "removedPhotos":  [
                                                null,
                                                "assets/homes/Peaceful-Riverside-Meadow-and-Slipway.png"
+                                           ]
+                     },
+                     {
+                         "id":  "p13",
+                         "title":  "Tidewatcher Rooftop",
+                         "address":  "3 Lantern Court",
+                         "city":  "Harbor Point",
+                         "type":  "Apartment",
+                         "status":  "For rent",
+                         "price":  3400,
+                         "beds":  2,
+                         "baths":  2,
+                         "area":  940,
+                         "lot":  "-",
+                         "year":  2023,
+                         "parking":  1,
+                         "featured":  true,
+                         "listed":  "2026-10-02",
+                         "agentId":  "a2",
+                         "image":  "assets/homes/property_16_harbour_apartments_corner.jpg",
+                         "images":  [
+                                        "assets/homes/property_16_harbour_apartments_corner.jpg",
+                                        "assets/homes/03_balcony_harbour_view.jpg",
+                                        "assets/homes/property_21_city_view_wide.jpg"
+                                    ],
+                         "features":  [
+                                          "Roof terrace",
+                                          "Harbour views",
+                                          "Concierge",
+                                          "Furnished option",
+                                          "Lift access",
+                                          "Short-let welcome"
+                                      ],
+                         "description":  "A corner apartment on the fourth floor with a glass-walled living space facing the water and a roof terrace that catches the last of the sun. Set up for short stays as well as full tenancies, with linen and weekly housekeeping included at the nightly rate.",
+                         "stays":  [
+                                       "Nightly",
+                                       "Weekly",
+                                       "Monthly"
+                                   ],
+                         "nightly":  210,
+                         "minNights":  2,
+                         "availableFrom":  "2026-10-05",
+                         "removedPhotos":  [
+
+                                           ]
+                     },
+                     {
+                         "id":  "p14",
+                         "title":  "Ridgeback Barn",
+                         "address":  "Elmwood Road, Marley End",
+                         "city":  "Elmwood",
+                         "type":  "House",
+                         "status":  "For rent",
+                         "price":  1450,
+                         "beds":  3,
+                         "baths":  2,
+                         "area":  1650,
+                         "lot":  "1.1 acres",
+                         "year":  1978,
+                         "parking":  3,
+                         "featured":  false,
+                         "listed":  "2026-10-01",
+                         "agentId":  "a4",
+                         "image":  "assets/homes/property_26_bungalow_garden.jpg",
+                         "images":  [
+                                        "assets/homes/property_26_bungalow_garden.jpg",
+                                        "assets/homes/property_28_bungalow_hills.jpg",
+                                        "assets/homes/property_31_woodland_ridge_track.jpg"
+                                    ],
+                         "features":  [
+                                          "Enclosed garden",
+                                          "Log burner",
+                                          "Off-road parking",
+                                          "Pets considered",
+                                          "Short-let welcome",
+                                          "Saturday check-in"
+                                      ],
+                         "description":  "A converted barn at the top of the valley, with a walled garden, a log burner and three cars off the lane. Let by the week through the winter and by the month the rest of the year, with flexible arrival days on a weekend.",
+                         "stays":  [
+                                       "Weekly",
+                                       "Monthly"
+                                   ],
+                         "weekly":  620,
+                         "minNights":  4,
+                         "availableTo":  "2027-04-30",
+                         "removedPhotos":  [
+
                                            ]
                      }
                  ],

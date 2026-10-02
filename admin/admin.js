@@ -757,7 +757,42 @@ const ZONINGS = ['Residential', 'Commercial', 'Industrial', 'Agricultural', 'Mix
 const TITLE_DEEDS = ['Freehold', 'Leasehold', 'Consent', 'Searching title'];
 const PLOT_UNITS = ['acres', 'hectares', 'sq m'];
 
+/* The lengths of stay a rental can offer, in the order the website shows them.
+   The worker keeps its own copy of this list and drops anything it does not
+   recognise, so the two agreeing is what stops the panel offering a term the
+   site would then quietly ignore. */
+const STAY_TERMS = ['Nightly', 'Weekly', 'Monthly'];
+
+/*
+ * The picture a listing shows before it has any of its own.
+ *
+ * This used to be an SVG placeholder the website shipped. It stopped shipping
+ * when the photography arrived, which left this pointing at nothing: approve a
+ * listing with no photographs and its card got a broken image. The fallback is
+ * now a photograph that is actually in assets/homes/, and if that ever goes
+ * missing the site cannot publish anyway.
+ */
+const FALLBACK_IMAGE = 'assets/homes/property_04_harbour_villa_twilight.jpg';
+
 const isLandType = (type) => LAND_TYPES.includes(type);
+
+/**
+ * Short stays only make sense on a rental, so the panel follows the status - the
+ * same rule the agent form uses. `hot` stays visible for everything: a house
+ * going for a fixed price can be the deal of the month just as easily as a
+ * cottage taking weekends, and hiding the control would mean the promotion
+ * feature quietly only worked for one kind of listing.
+ */
+function syncStayPanel(body, panel) {
+  if (!panel) return;
+  const status = $('[name="status"]', body);
+  const type = $('[name="type"]', body);
+  const rental = status && status.value === 'For rent';
+  const land = type && isLandType(type.value);
+
+  $$('[data-stay-only]', panel).forEach((row) => { row.hidden = !rental || land; });
+  panel.querySelector('legend').textContent = rental ? 'Short stays' : 'Promotion';
+}
 
 /** The type <select>, grouped the way the site's filter is grouped. */
 const typeOptions = (selected) => `
@@ -827,6 +862,37 @@ function editListing(existing) {
         <label class="field"><span>Price in ${baseCurrency()} — no commas</span><input name="price" type="number" min="0" step="1000" value="${Number(draft.price) || 0}" required /></label>
         <label class="field"><span>Listed on</span><input name="listed" type="date" value="${escapeHtml(draft.listed)}" /></label>
         <label class="field field--check"><input name="featured" type="checkbox"${draft.featured ? ' checked' : ''} /> <span>Feature on the home page</span></label>
+      </div>
+    </fieldset>
+
+    <fieldset data-stay-panel>
+      <legend>Short stays and promotion</legend>
+      <div class="form-grid">
+        <label class="field field--full" data-stay-only><span>Lengths of stay accepted</span>
+          <span class="check-row">${['Nightly', 'Weekly', 'Monthly'].map((term) => `
+            <label class="field--check"><input type="checkbox" name="stays" value="${term}"${(draft.stays || []).includes(term) ? ' checked' : ''} /> <span>${term}</span></label>`).join('')}</span>
+          <small class="hint">A sale cannot be booked by the night, so these only apply to a rental. Leave every box empty for an ordinary long let.</small>
+        </label>
+        <label class="field" data-stay-only><span>Price per night — optional</span>
+          <input name="nightly" type="number" min="0" step="1" value="${Number(draft.nightly) || ''}" placeholder="Derived if blank" />
+        </label>
+        <label class="field" data-stay-only><span>Price per week — optional</span>
+          <input name="weekly" type="number" min="0" step="1" value="${Number(draft.weekly) || ''}" placeholder="Derived if blank" />
+        </label>
+        <label class="field" data-stay-only><span>Minimum nights</span>
+          <input name="minNights" type="number" min="1" max="365" step="1" value="${Number(draft.minNights) || 1}" />
+        </label>
+        <label class="field" data-stay-only><span>Available from</span>
+          <input name="availableFrom" type="date" value="${escapeHtml(draft.availableFrom || '')}" />
+        </label>
+        <label class="field" data-stay-only><span>Available until</span>
+          <input name="availableTo" type="date" value="${escapeHtml(draft.availableTo || '')}" />
+        </label>
+        <label class="field field--check"><input name="hot" type="checkbox"${draft.hot ? ' checked' : ''} /> <span>Show as a hot deal</span></label>
+        <label class="field"><span>Hot deal ends</span>
+          <input name="hotUntil" type="date" value="${escapeHtml(draft.hotUntil || '')}" />
+          <small class="hint">Leave the date blank for a standing promotion. With a date, the deal stops being hot by itself and nobody has to remember to clear it.</small>
+        </label>
       </div>
     </fieldset>
 
@@ -922,9 +988,44 @@ function editListing(existing) {
         agentId,
         description: value('description'),
         images: [...draft.images],
-        image: draft.images[0] || 'assets/homes/property-01.svg',
+        image: draft.images[0] || FALLBACK_IMAGE,
         features: [...draft.features]
       };
+
+      /*
+       * Short stays.
+       *
+       * Everything here is removed rather than blanked when the office unticks a
+       * box. Leaving `nightly: 0` behind would stop the website deriving that
+       * rate from the monthly price and would show a free night, so an unticked
+       * panel has to erase the fields, not empty them.
+       */
+      const stays = $$('[name="stays"]:checked', body).map((box) => box.value);
+      ['stays', 'nightly', 'weekly', 'minNights', 'availableFrom', 'availableTo'].forEach((key) => {
+        delete updated[key];
+      });
+      if (stays.length && !land && updated.status === 'For rent') {
+        updated.stays = STAY_TERMS.filter((term) => stays.includes(term));
+        const nightly = Number(value('nightly'));
+        if (nightly > 0) updated.nightly = nightly;
+        const weekly = Number(value('weekly'));
+        if (weekly > 0) updated.weekly = weekly;
+        const minNights = Number(value('minNights'));
+        if (minNights >= 1 && minNights <= 365) updated.minNights = minNights;
+        if (value('availableFrom')) updated.availableFrom = value('availableFrom');
+        if (value('availableTo')) updated.availableTo = value('availableTo');
+      }
+
+      /*
+       * Promotion. Kept separate from the stays above on purpose: a house going
+       * for a fixed price can still be the deal of the month, and a rental can be
+       * hot without taking a single night. `hotUntil` is optional on purpose too,
+       * because a standing promotion is a real thing an agency wants.
+       */
+      updated.hot = $('[name="hot"]', body).checked;
+      if (updated.hot && value('hotUntil')) updated.hotUntil = value('hotUntil');
+      else delete updated.hotUntil;
+      if (!updated.hot) updated.hot = false;
 
       if (land) {
         const plotAcres = Number(value('plotAcres')) || 0;
@@ -968,6 +1069,15 @@ function wireListingDrawer(draft) {
   if (typeControl) {
     applyListingKind(body, typeControl.value);
     typeControl.addEventListener('change', () => applyListingKind(body, typeControl.value));
+  }
+
+  // The short-stay panel follows the status for the same reason the spec block
+  // follows the type: nights and weeks are meaningless on a house for sale.
+  const stayPanel = $('[data-stay-panel]', body);
+  if (stayPanel) {
+    syncStayPanel(body, stayPanel);
+    $('[name="status"]', body)?.addEventListener('change', () => syncStayPanel(body, stayPanel));
+    typeControl?.addEventListener('change', () => syncStayPanel(body, stayPanel));
   }
 
   // Both blocks carry a "Listed by", and only one is enabled at a time, so a

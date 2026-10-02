@@ -880,6 +880,20 @@ function Invoke-Api {
                 }
             }
 
+            # A listing can arrive with no photographs, so something has to stand in
+            # for the card. This used to name an SVG placeholder that the website
+            # no longer ships, which put a broken image on a listing the office had
+            # just approved. It now takes any photograph already in the folder,
+            # which is the same place the real ones live, and cannot go missing
+            # without the whole site being unpublishable anyway.
+            $placeholder = @('property_04_harbour_villa_twilight.jpg') |
+                Where-Object { Test-Path (Join-Path $photoFolder $_) } |
+                Select-Object -First 1
+            if (-not $placeholder) {
+                $placeholder = (Get-ChildItem $photoFolder -File -ErrorAction SilentlyContinue |
+                    Select-Object -First 1).Name
+            }
+
             $entry = [ordered]@{
                 id       = $listingId
                 title    = [string](Get-FieldValue $listing 'title')
@@ -897,13 +911,43 @@ function Invoke-Api {
                 featured = $false
                 listed   = (Get-Date).ToString('yyyy-MM-dd')
                 agentId  = $agentId
-                image    = $(if ($images.Count -gt 0) { $images[0] } else { 'assets/homes/property-01.svg' })
+                image    = $(if ($images.Count -gt 0) { $images[0] } elseif ($placeholder) { "assets/homes/$placeholder" } else { '' })
                 images   = $images
                 features = @(Get-FieldValue $listing 'features')
                 description = [string](Get-FieldValue $listing 'description')
                 removedPhotos = @()
             }
             if (Get-FieldValue $listing 'land') { $entry['land'] = Get-FieldValue $listing 'land' }
+
+            # Short stays. Copied through only when they survive the same checks the
+            # worker applied on the way in, so an approval cannot be the step that
+            # quietly reinstates something validation had dropped.
+            #
+            # `hot` is deliberately not here. Promotion is a commercial decision
+            # with a date on it, and it is set in the panel below - by the office,
+            # after they have looked at the listing.
+            $stays = @((Get-FieldValue $listing 'stays') | Where-Object {
+                $_ -in @('Nightly', 'Weekly', 'Monthly')
+            })
+            if ($stays.Count) {
+                $entry['stays'] = @('Nightly', 'Weekly', 'Monthly' |
+                    Where-Object { $_ -in $stays })
+
+                $nightly = [double](Get-FieldValue $listing 'nightly')
+                if ($nightly -gt 0) { $entry['nightly'] = [int][Math]::Round($nightly) }
+
+                $weekly = [double](Get-FieldValue $listing 'weekly')
+                if ($weekly -gt 0) { $entry['weekly'] = [int][Math]::Round($weekly) }
+
+                $minNights = [int](Get-FieldValue $listing 'minNights')
+                if ($minNights -ge 1 -and $minNights -le 365) { $entry['minNights'] = $minNights }
+
+                $from = [string](Get-FieldValue $listing 'availableFrom')
+                if ($from -match '^\d{4}-\d{2}-\d{2}$') { $entry['availableFrom'] = $from }
+
+                $to = [string](Get-FieldValue $listing 'availableTo')
+                if ($to -match '^\d{4}-\d{2}-\d{2}$') { $entry['availableTo'] = $to }
+            }
 
             $data.listings = @($data.listings) + @($entry)
             Save-Data -Data $data

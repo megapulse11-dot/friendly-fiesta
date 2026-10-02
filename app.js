@@ -54,6 +54,105 @@ const isLand = (listing) => Boolean(listing.land) || LAND_TYPES.includes(listing
 const isHome = (listing) => !isLand(listing);
 
 const isRent = (listing) => listing.status === 'For rent';
+
+/* ---- short stays ---------------------------------------------------------- */
+/*
+ * Rentals taken for a set period rather than a year: a few nights, a week, a
+ * couple of months, a whole weekend.
+ *
+ * The shape of this is deliberately additive. `price` stays what it always was
+ * - the monthly rent for a rental, the asking price for a sale - so the budget
+ * bands, the sorting, the currency conversion and the "/ month" suffix all keep
+ * working on every listing without being taught about a new field. `nightly` and
+ * `weekly` are optional overrides on top of it, and anything left out is derived
+ * rather than shown as a gap.
+ *
+ * An owner who wants a discount for staying longer writes one: a high nightly
+ * rate and a lower monthly price is exactly that, and it needs no extra concept.
+ */
+const STAY_TERMS = ['Nightly', 'Weekly', 'Monthly'];
+
+/** Does this listing accept anything shorter than a full tenancy? */
+const isShortStay = (listing) =>
+  Array.isArray(listing.stays) && listing.stays.some((term) => STAY_TERMS.includes(term));
+
+/**
+ * The nightly rate for a listing, preferring what the owner actually wrote and
+ * falling back through weekly and monthly so a card can never show a blank.
+ *
+ * Rounding is to the nearest whole unit: a nightly rate of 172.857 would look
+ * like a bug on a listing card, and nobody prices a weekend to the penny.
+ */
+function nightlyRate(listing) {
+  if (Number(listing.nightly) > 0) return Math.round(listing.nightly);
+  if (Number(listing.weekly) > 0) return Math.round(Number(listing.weekly) / 7);
+  if (isRent(listing) && Number(listing.price) > 0) return Math.round(Number(listing.price) / 30);
+  return 0;
+}
+
+function weeklyRate(listing) {
+  if (Number(listing.weekly) > 0) return Math.round(Number(listing.weekly));
+  return nightlyRate(listing) * 7;
+}
+
+/**
+ * A rate is only shown as a headline if the owner has something to say about it.
+ * A one-month let is not a special offer and is left to the ordinary rent path.
+ */
+const shortStayRates = (listing) => {
+  if (!isShortStay(listing)) return null;
+  const rates = [];
+  // A nightly rate is offered when the owner says nights are acceptable, or
+  // writes a nightly figure. It is NOT offered merely because a weekly rate
+  // exists: somebody who takes weeks and not nights has usually said so on
+  // purpose, and deriving a night rate for them would promise a booking they
+  // will refuse.
+  if (listing.stays.includes('Nightly') || Number(listing.nightly) > 0) {
+    rates.push({ term: 'Nightly', value: nightlyRate(listing), unit: 'night' });
+  }
+  if (listing.stays.includes('Weekly') || Number(listing.weekly) > 0) {
+    rates.push({ term: 'Weekly', value: weeklyRate(listing), unit: 'week' });
+  }
+  if (listing.stays.includes('Monthly')) {
+    rates.push({ term: 'Monthly', value: Number(listing.price), unit: 'month' });
+  }
+  return rates.length ? rates : null;
+};
+
+/** The shortest booking this listing will accept, in nights. */
+const minNights = (listing) => (Number(listing.minNights) > 0 ? Number(listing.minNights) : 1);
+
+/**
+ * A hot deal, and only while it is actually hot.
+ *
+ * `hotUntil` is what stops this becoming a permanent decoration. A listing
+ * flagged hot with no end date is treated as running indefinitely, because some
+ * agencies do want a standing promotion; anything with a date quietly stops
+ * being hot the day after, with no one having to remember to clear it.
+ */
+function isHot(listing) {
+  if (!listing.hot) return false;
+  if (!listing.hotUntil) return true;
+  const until = new Date(`${listing.hotUntil}T23:59:59`);
+  return !Number.isNaN(until.getTime()) && until.getTime() >= Date.now();
+}
+
+/** "Available 1 – 20 Oct", or nothing when the owner has not said. */
+function availabilityWindow(listing) {
+  const from = listing.availableFrom;
+  const to = listing.availableTo;
+  if (!from && !to) return '';
+  const day = 86400000;
+  const fmt = (value) =>
+    new Date(`${value}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  // A month or so is two different months, so the year only helps when it spans.
+  if (from && to) {
+    const showYear = new Date(`${to}T00:00:00`) - new Date(`${from}T00:00:00`) > day * 45;
+    const suffix = showYear ? ` ${new Date(`${to}T00:00:00`).getFullYear()}` : '';
+    return `Available ${fmt(from)} – ${fmt(to)}${suffix}`;
+  }
+  return from ? `Available from ${fmt(from)}` : `Available until ${fmt(to)}`;
+}
 const formatArea = (listing) => `${numberFormat.format(listing.area)} ft²`;
 
 /*
@@ -267,7 +366,14 @@ const BUDGET_LABELS = {
   '2500000-': (c) => `${c(2500000)}+`,
   '0-2500': (c) => `Up to ${c(2500)}`,
   '2500-4000': (c) => `${c(2500)} – ${c(4000)}`,
-  '4000-': (c) => `${c(4000)}+`
+  '4000-': (c) => `${c(4000)}+`,
+  // Nightly bands, for the short-stay search. The values are per night, so these
+  // are deliberately tiny next to the sale bands above: a night is a night
+  // whatever currency it is shown in, and the arithmetic stays honest.
+  '0-100': (c) => `Up to ${c(100)} a night`,
+  '100-200': (c) => `${c(100)} – ${c(200)} a night`,
+  '200-350': (c) => `${c(200)} – ${c(350)} a night`,
+  '350-': (c) => `${c(350)}+ a night`
 };
 
 function paintBudgetLabels(scope = document) {
@@ -517,21 +623,24 @@ function propertyCard(listing, options = {}) {
     ? `<p class="card-description">${escapeHtml(listing.description)}</p>`
     : '';
   return `
-    <article class="property-card ${statusClass}" data-listing="${listing.id}">
+    <article class="property-card ${statusClass}${isHot(listing) ? ' card--hot' : ''}" data-listing="${listing.id}">
       <div class="card-media">
         <img src="${listing.image}" alt="${escapeHtml(listing.title)}" loading="lazy" width="1200" height="900" />
         <div class="card-badges">
+          ${isHot(listing) ? '<span class="badge badge--hot">Hot deal</span>' : ''}
           ${listing.status === 'Sold' ? '<span class="badge badge--muted">Sold</span>' : ''}
-          ${isRent(listing) ? '<span class="badge badge--accent">To rent</span>' : ''}
+          ${isRent(listing) ? `<span class="badge badge--accent">To rent</span>` : ''}
+          ${isShortStay(listing) ? '<span class="badge badge--brand">Short stay</span>' : ''}
           ${listing.featured && !isRent(listing) ? '<span class="badge badge--solid">Featured</span>' : ''}
         </div>
         <button class="favorite-button" type="button" data-favorite="${listing.id}" aria-pressed="false" aria-label="Save this home">${icon('heart')}</button>
       </div>
       <div class="card-body">
-        <p class="card-price" ${priceAttrs(listing.price, isRent(listing) ? '/ month' : '')}></p>
+        ${cardPriceBlock(listing)}
         <h3 class="card-title"><a href="property.html?id=${listing.id}">${escapeHtml(listing.title)}</a></h3>
         <p class="card-address">${icon('pin', 'icon--sm')}${escapeHtml(listing.address)}, ${escapeHtml(listing.city)}</p>
         <div class="card-specs">${cardSpecs(listing)}</div>
+        ${shortStayNote(listing)}
         ${description}
         <div class="card-footer">
           <span class="card-agent"><span class="avatar avatar--${agent.tint}">${agent.initials}</span>${escapeHtml(agent.name)}</span>
@@ -539,6 +648,43 @@ function propertyCard(listing, options = {}) {
         </div>
       </div>
     </article>`;
+}
+
+/**
+ * The price line.
+ *
+ * A short stay leads with the rate a visitor searching for a weekend actually
+ * compares on - the night - and puts the week beside it in the quieter colour.
+ * The monthly rate is still here for anyone letting for three months, which is
+ * the other half of what this feature is for.
+ */
+function cardPriceBlock(listing) {
+  const rates = shortStayRates(listing);
+  if (!rates) {
+    return `<p class="card-price" ${priceAttrs(listing.price, isRent(listing) ? '/ month' : '')}></p>`;
+  }
+
+  const head = rates[0];
+  const rest = rates.slice(1).map((rate) => `
+    <span ${priceAttrs(rate.value, ` / ${rate.unit}`, true)}></span>`).join('');
+
+  return `
+    <p class="card-price card-price--stay">
+      <strong ${priceAttrs(head.value, ` / ${head.unit}`)}></strong>
+      ${rest}
+    </p>`;
+}
+
+/** The line under the specs: minimum stay, and the window it is open for. */
+function shortStayNote(listing) {
+  if (!isShortStay(listing)) return '';
+  const notes = [];
+  const nights = minNights(listing);
+  if (nights > 1) notes.push(`Minimum ${nights} nights`);
+  const window = availabilityWindow(listing);
+  if (window) notes.push(window);
+  if (!notes.length) return '';
+  return `<p class="card-stay">${icon('calendar', 'icon--sm')}${escapeHtml(notes.join(' · '))}</p>`;
 }
 
 /* ---- theme --------------------------------------------------------------- */
@@ -668,6 +814,21 @@ function renderHome() {
   if (featuredGrid) {
     const featured = listings.filter((listing) => listing.featured && listing.status !== 'Sold').slice(0, 6);
     featuredGrid.innerHTML = featured.map((listing) => propertyCard(listing)).join('');
+  }
+
+  // Hot deals, if there are any. A promotion that has run out is not hot any
+  // more, so isHot() filters them on their own and this can simply check whether
+  // anything survived. The section stays hidden otherwise.
+  const hotSection = $('#hot-section');
+  const hotGrid = $('#hot-grid');
+  if (hotSection && hotGrid) {
+    const hot = listings
+      .filter((listing) => isHot(listing) && listing.status !== 'Sold')
+      .slice(0, 3);
+    if (hot.length) {
+      hotGrid.innerHTML = hot.map((listing) => propertyCard(listing)).join('');
+      hotSection.hidden = false;
+    }
   }
 
   const agentGrid = $('#agent-grid');
@@ -856,7 +1017,12 @@ function initSearchPanel() {
     rent: [['', 'Any rent'], ['0-2500', 'Up to $2,500'], ['2500-4000', '$2,500 – $4,000'], ['4000-', '$4,000+']],
     // Land is priced by the parcel and its paperwork rather than by the rooms it
     // will hold, so it gets bands an acre of ground actually falls into.
-    land: [['', 'Any budget'], ['0-2500000', 'Up to $2.5M'], ['2500000-7500000', '$2.5M – $7.5M'], ['7500000-20000000', '$7.5M – $20M'], ['20000000-', '$20M+']]
+    land: [['', 'Any budget'], ['0-2500000', 'Up to $2.5M'], ['2500000-7500000', '$2.5M – $7.5M'], ['7500000-20000000', '$7.5M – $20M'], ['20000000-', '$20M+']],
+    // A short stay is budgeted by the night, because that is what somebody
+    // planning a weekend is actually shopping for. The bands are matched against
+    // nightlyRate() rather than against the monthly price, so a three-month let
+    // priced at its monthly rate is still found by the right search.
+    short: [['', 'Any nightly rate'], ['0-100', 'Up to $100 a night'], ['100-200', '$100 – $200 a night'], ['200-350', '$200 – $350 a night'], ['350-', '$350+ a night']]
   };
 
   const renderBudget = () => {
@@ -870,9 +1036,14 @@ function initSearchPanel() {
     intent = tab.dataset.intent;
     tabs.forEach((item) => item.classList.toggle('is-active', item === tab));
     // Land is a category as well as an intent, so the type list is trimmed to the
-    // group that can actually match rather than left offering apartments.
+    // group that can actually match rather than left offering apartments. A short
+    // stay is the same idea: you cannot spend a weekend on a parcel of land, so
+    // the land half of the type list goes too.
+    const landOnly = intent === 'land';
+    const homesOnly = intent === 'short';
     $$('[name="type"] option[data-group]', panel).forEach((option) => {
-      option.hidden = Boolean(intent === 'land') && option.dataset.group !== 'land';
+      option.hidden = (landOnly && option.dataset.group !== 'land')
+        || (homesOnly && option.dataset.group !== 'home');
     });
     renderBudget();
   }));
@@ -891,6 +1062,10 @@ function initSearchPanel() {
     // a status: it means "parcels of ground, for sale".
     if (intent === 'land') params.set('kind', 'land');
     if (intent === 'rent') params.set('status', 'For rent');
+    // A short stay is a rental that also accepts a shorter term, so it needs both
+    // halves: the status, because these are all "For rent", and the kind, because
+    // without it a visitor looking for a weekend gets every long let as well.
+    if (intent === 'short') { params.set('kind', 'short'); params.set('status', 'For rent'); }
     if (type) params.set('type', type);
     if (budget) params.set('budget', budget);
     window.location.href = `properties.html${params.toString() ? `?${params}` : ''}`;
@@ -910,15 +1085,18 @@ function initResults() {
   let visible = PAGE_SIZE;
   let view = window.localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid';
 
-  const readState = () => {
+    const readState = () => {
     const params = new URLSearchParams(window.location.search);
+    const value = (key) => (clearedFromUrl.has(key) ? '' : (params.get(key) || ''));
     return {
-      q: params.get('q') || '',
-      kind: params.get('kind') || '',
-      type: params.get('type') || '',
-      status: params.get('status') || '',
-      budget: params.get('budget') || '',
-      beds: params.get('beds') || '',
+      q: value('q'),
+      kind: value('kind'),
+      type: value('type'),
+      status: value('status'),
+      budget: value('budget'),
+      beds: value('beds'),
+      term: value('term'),
+      hot: value('hot'),
       sort: params.get('sort') || 'featured'
     };
   };
@@ -936,8 +1114,16 @@ function initResults() {
     // land, and the type box is already restricted to that group by the form.
     if (state.kind === 'land' && !isLand(listing)) return false;
     if (state.kind === 'home' && isLand(listing)) return false;
+    // "Short" is a rental that also accepts a shorter term, so it implies the
+    // rental status rather than replacing it: a weekend cannot be bought.
+    if (state.kind === 'short' && (!isRent(listing) || !isShortStay(listing))) return false;
+    if (state.hot && !isHot(listing)) return false;
     if (state.status && listing.status !== state.status) return false;
     if (state.type && listing.type !== state.type) return false;
+    // The term box only narrows within short stays. Left applying to everything it
+    // would silently hide every ordinary let whenever a shared URL carried it, so
+    // it is treated as a leftover unless the search is already about short stays.
+    if (state.term && isShortStay(listing) && !listing.stays.includes(state.term)) return false;
     // Bedrooms are a house fact. A land parcel stores zero there, so asking for
     // "3+ beds" over land would match nothing - the bedroom control is hidden
     // while the Land category is on, and a shared URL that still carries it is
@@ -949,8 +1135,12 @@ function initResults() {
     }
     if (state.budget) {
       const [min, max] = state.budget.split('-').map(Number);
-      if (listing.price < min) return false;
-      if (max && listing.price > max) return false;
+      // A short-stay search budgets by the night and everything else budgets by
+      // the price on the listing, which for a rental is the month. Same control,
+      // two different numbers behind it.
+      const amount = state.kind === 'short' ? nightlyRate(listing) : listing.price;
+      if (amount < min) return false;
+      if (max && amount > max) return false;
     }
     return true;
   };
@@ -965,16 +1155,25 @@ function initResults() {
       const sizeOf = (item) => (isLand(item) ? Number(item.land?.plotAcres) || 0 : item.area || 0);
       return sizeOf(b) - sizeOf(a);
     },
-    featured: (a, b) => Number(b.featured) - Number(a.featured) || b.listed.localeCompare(a.listed)
+    // A live hot deal outranks a featured one, because isHot() already knows the
+    // promotion has run out and stops treating it as hot on its own.
+    featured: (a, b) => Number(isHot(b)) - Number(isHot(a))
+      || Number(b.featured) - Number(a.featured)
+      || b.listed.localeCompare(a.listed)
   };
 
   const describeChips = (state) => {
     const chips = [];
     if (state.q) chips.push({ key: 'q', label: `“${state.q}”` });
-    if (state.kind) chips.push({ key: 'kind', label: state.kind === 'land' ? 'Land' : 'Homes' });
+    if (state.kind) {
+      const kindLabel = { land: 'Land', short: 'Short stay', home: 'Homes' }[state.kind] || 'Homes';
+      chips.push({ key: 'kind', label: kindLabel });
+    }
     if (state.type) chips.push({ key: 'type', label: state.type });
     if (state.status) chips.push({ key: 'status', label: state.status });
+    if (state.term) chips.push({ key: 'term', label: `${state.term} stays` });
     if (state.beds) chips.push({ key: 'beds', label: `${state.beds}+ beds` });
+    if (state.hot) chips.push({ key: 'hot', label: 'Hot deals only' });
     if (state.budget) {
       const selected = $(`[name="budget"] option[value="${state.budget}"]`)?.textContent;
       chips.push({ key: 'budget', label: selected || state.budget });
@@ -1003,8 +1202,21 @@ function initResults() {
       if (onLand && bedsControl) bedsControl.value = '';
     }
 
+    // The term box belongs to short stays alone. On any other category it would be
+    // a control that cannot narrow anything, so it is hidden and cleared rather
+    // than left on screen to be ignored.
+    const termField = $('[data-term-field]', form);
+    if (termField) {
+      termField.hidden = state.kind !== 'short';
+      const termControl = form.elements.term;
+      if (state.kind !== 'short' && termControl) termControl.value = '';
+    }
+
     $$('[name="type"] option[data-group]', form).forEach((option) => {
-      option.hidden = Boolean(state.kind) && option.dataset.group !== state.kind;
+      // "short" is a category of homes, not a third group of type, so it is
+      // expressed as "homes only" rather than as a group of its own.
+      const group = state.kind === 'short' ? 'home' : state.kind;
+      option.hidden = Boolean(state.kind) && option.dataset.group !== group;
     });
   };
 
@@ -1018,7 +1230,7 @@ function initResults() {
     grid.classList.toggle('is-list', view === 'list');
     // "N homes found" was written before land existed. Counting whichever category is
     // on screen keeps the sentence honest in every filter combination.
-    const noun = state.kind === 'land' ? 'plot' : state.kind === 'home' ? 'home' : 'listing';
+    const noun = state.kind === 'land' ? 'plot' : state.kind === 'short' ? 'short stay' : state.kind === 'home' ? 'home' : 'listing';
     countLabel.innerHTML = `<strong>${results.length}</strong> ${noun}${results.length === 1 ? '' : 's'} found`;
     emptyState.hidden = results.length !== 0;
     grid.hidden = results.length === 0;
@@ -1032,6 +1244,9 @@ function initResults() {
 
     syncFavoriteButtons();
     writeState(state);
+    // The URL now carries the cleaned state, so the record of what was just
+    // cleared has done its job and must not suppress a filter put back later.
+    clearedFromUrl.clear();
   }
 
   // Reflect the URL state into the controls before the first render.
@@ -1069,7 +1284,12 @@ function initResults() {
   chipRow.addEventListener('click', (event) => {
     const button = event.target.closest('[data-clear]');
     if (!button) return;
-    form.elements[button.dataset.clear].value = '';
+    const key = button.dataset.clear;
+    const control = form.elements[key];
+    if (control) control.value = '';
+    // Remembered either way: a chip with no control behind it would otherwise
+    // reappear on the next render, because the URL still carried the filter.
+    clearedFromUrl.add(key);
     visible = PAGE_SIZE;
     render();
   });
@@ -1091,6 +1311,50 @@ function initResults() {
   // changing currency has to rebuild the chips, not just repaint the prices.
   repaintPrices = render;
   render();
+}
+
+/**
+ * The rates table on a short stay.
+ *
+ * Every rate carries its own unit, because a night and a month are not the same
+ * purchase and pretending otherwise is how a weekend ends up looking like a
+ * bargain. The note underneath says the two things a visitor cannot infer from
+ * the numbers: the shortest booking, and the window the place is actually open.
+ */
+function ratesTable(listing) {
+  const rates = shortStayRates(listing);
+  if (!rates) return '';
+
+  const rows = rates.map((rate) => `
+    <div class="rates-row">
+      <dt>Per ${rate.unit.replace(/s$/, '')}</dt>
+      <dd ${priceAttrs(rate.value)}></dd>
+    </div>`).join('');
+
+  const notes = [];
+  const nights = minNights(listing);
+  if (nights > 1) notes.push(`Minimum stay ${nights} nights`);
+  const window = availabilityWindow(listing);
+  if (window) notes.push(window);
+
+  return `
+    <section class="detail-section">
+      <h2>Rates</h2>
+      <dl class="rates">
+        ${rows}
+        ${notes.length ? `<div class="rates-note">${icon('calendar', 'icon--sm')}${escapeHtml(notes.join(' · '))}</div>` : ''}
+      </dl>
+    </section>`;
+}
+
+/** The promotion banner. Says what the promotion is, not just that there is one. */
+function hotBanner(listing) {
+  if (!isHot(listing)) return '';
+  const until = listing.hotUntil
+    ? ` · ends ${new Date(`${listing.hotUntil}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+    : '';
+  const stay = isShortStay(listing) ? ' on a short stay' : '';
+  return `<p class="hot-banner">${icon('sparkle', 'icon--sm')} Hot deal${stay}${until}</p>`;
 }
 
 /* ---- property detail ---------------------------------------------------- */
@@ -1123,6 +1387,7 @@ function initDetail() {
     </nav>
     <div class="detail-layout">
       <div>
+        ${hotBanner(listing)}
         <div class="gallery">
           <div class="gallery-main"><img id="gallery-main-image" src="${listing.images[0]}" alt="${escapeHtml(listing.title)}" width="1200" height="750" /></div>
           <div class="gallery-thumbs" role="group" aria-label="Property photos">
@@ -1144,6 +1409,8 @@ function initDetail() {
             <button class="button button--secondary" type="button" data-share>${icon('share', 'icon--sm')} Share</button>
           </div>
         </div>
+
+        ${ratesTable(listing)}
 
         <dl class="spec-grid">${detailSpecs(listing)}</dl>
 

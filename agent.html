@@ -161,10 +161,47 @@
               </select>
             </div>
             <div class="field">
-              <label for="f-price">Price</label>
+              <label for="f-price">Price <span class="field-hint" id="f-price-hint">monthly rent</span></label>
               <input id="f-price" name="price" type="number" min="1" step="1" inputmode="numeric" required />
             </div>
           </div>
+
+          <!-- Short stays. Only shown for a rental, because a weekend cannot be
+               bought and a night rate on a sale price means nothing. Leave the
+               rates blank and the office derives them from the monthly price. -->
+          <fieldset class="short-stay" id="stay-fields" hidden>
+            <legend>Short stays</legend>
+            <p class="field-hint">Tick the lengths you will actually take. Anything left blank is worked out from the monthly price.</p>
+            <div class="check-row">
+              <label class="checkbox"><input type="checkbox" name="stays" value="Nightly" /> Nights</label>
+              <label class="checkbox"><input type="checkbox" name="stays" value="Weekly" /> Weeks</label>
+              <label class="checkbox"><input type="checkbox" name="stays" value="Monthly" /> Months</label>
+            </div>
+            <div class="grid-3">
+              <div class="field">
+                <label for="f-nightly">Per night</label>
+                <input id="f-nightly" name="nightly" type="number" min="0" step="1" inputmode="numeric" placeholder="Optional" />
+              </div>
+              <div class="field">
+                <label for="f-weekly">Per week</label>
+                <input id="f-weekly" name="weekly" type="number" min="0" step="1" inputmode="numeric" placeholder="Optional" />
+              </div>
+              <div class="field">
+                <label for="f-min-nights">Minimum nights</label>
+                <input id="f-min-nights" name="minNights" type="number" min="1" max="365" step="1" value="1" />
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="field">
+                <label for="f-from">Available from</label>
+                <input id="f-from" name="availableFrom" type="date" />
+              </div>
+              <div class="field">
+                <label for="f-to">Available until</label>
+                <input id="f-to" name="availableTo" type="date" />
+              </div>
+            </div>
+          </fieldset>
 
           <div id="home-fields" class="grid-2">
             <div class="field">
