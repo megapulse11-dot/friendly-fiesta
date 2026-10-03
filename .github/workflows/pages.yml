@@ -52,7 +52,7 @@ jobs:
           # published site while working perfectly on localhost.
           for file in index.html properties.html property.html contact.html \
                       app.js styles.css data.js favicon.svg theme.js \
-                      agent.html agent.js agent.css; do
+                      agent.html agent.js agent.css robots.txt sitemap.xml; do
             if [ ! -f "$file" ]; then
               echo "::error::Missing $file - the site would break."
               exit 1

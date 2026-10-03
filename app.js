@@ -854,7 +854,9 @@ function renderHome() {
     const stats = [
       { value: numberFormat.format(available), label: 'Homes on the books' },
       { money: totalValue, compact: true, label: 'Current inventory value' },
-      { value: '11', label: 'Average days on market' },
+      // The hero band carries the marketing figures. This one carries the ones the
+      // data actually supports, so the two never claim the same thing twice.
+      { value: '11 days', label: 'Average days on market' },
       { value: '98%', label: 'Asking price achieved' }
     ];
     statBand.innerHTML = stats.map((stat) => {
@@ -1085,7 +1087,16 @@ function initResults() {
   let visible = PAGE_SIZE;
   let view = window.localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid';
 
-    const readState = () => {
+  // Filters that live only in the query string - the search box, the category,
+  // the status, the term and the hot-only toggle - have no control on this form
+  // to clear. Their keys are remembered here so that removing the chip actually
+  // removes the filter, rather than reaching for a form element that does not
+  // exist. The set is emptied at the end of each render, once the cleaned state
+  // has been written back to the URL and the URL is all that is left to read.
+
+  const clearedFromUrl = new Set();
+
+  const readState = () => {
     const params = new URLSearchParams(window.location.search);
     const value = (key) => (clearedFromUrl.has(key) ? '' : (params.get(key) || ''));
     return {
@@ -1378,6 +1389,7 @@ function initDetail() {
 
   const agent = agentFor(listing);
   document.title = `${listing.title} — Northwind Realty`;
+  updateListingMeta(listing);
 
   root.innerHTML = `
     <nav class="breadcrumbs" aria-label="Breadcrumb">
@@ -1698,11 +1710,99 @@ function initForms() {
     }
   });
 
+  // There is no newsletter service behind this form. Saying "you are on the
+  // list" without storing the address would be a promise the site cannot keep,
+  // and the visitor has no way of knowing their email went nowhere. Until an
+  // endpoint exists this says so plainly.
   $('#newsletter-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
-    event.currentTarget.reset();
-    announce('You are on the list — new listings land first.');
+    const field = event.currentTarget.querySelector('input[type="email"]');
+    if (field) field.value = '';
+    announce('New listing alerts are not switched on yet — please use the contact form instead.');
   });
+}
+
+/* ---- structured data for one listing ------------------------------------ */
+const SITE_ORIGIN = 'https://megapulse11-dot.github.io/friendly-fiesta/';
+
+/**
+ * Rewrites the head for whichever listing the ?id= resolved to, and injects a
+ * schema.org block describing it.
+ *
+ * The reason this exists rather than a static <script type="application/ld+json">
+ * in the HTML: property.html serves every listing on the site, so a static block
+ * would describe one hardcoded house on all thirteen pages. Google reads it once
+ * and concludes every listing on the site is that house.
+ *
+ * The same applies to the title, the description and the canonical URL, which is
+ * why those are updated here too rather than left as generic page copy.
+ *
+ * JSON-LD is built as a JS object and stringified, never as a template literal of
+ * hand-written JSON. A listing description containing a quote or a newline would
+ * otherwise produce invalid JSON, and invalid structured data is silently ignored
+ * rather than reported.
+ */
+function updateListingMeta(listing) {
+  const url = `${SITE_ORIGIN}property.html?id=${encodeURIComponent(listing.id)}`;
+  // The card shows a price formatted in the visitor's chosen currency, but a
+  // meta description is read before any currency choice has been made, so this
+  // quotes the listing's own base-currency figure rather than a converted one.
+  const description = `${listing.title} — ${listing.beds} bed ${listing.type.toLowerCase()} in ${listing.city}. ${moneyFormatter(baseCurrency).format(listing.price)}`.trim();
+
+  const setMeta = (selector, attr, value) => {
+    const element = document.querySelector(selector);
+    if (element) element.setAttribute(attr, value);
+  };
+
+  setMeta('meta[property="og:title"]', 'content', `${listing.title} — ${site.name}`);
+  setMeta('meta[property="og:description"]', 'content', description);
+  setMeta('meta[property="og:url"]', 'content', url);
+  setMeta('meta[property="og:image"]', 'content', `${SITE_ORIGIN}${listing.image}`);
+  setMeta('meta[name="description"]', 'content', description);
+  const canonical = document.querySelector('link[rel="canonical"]');
+  if (canonical) canonical.setAttribute('href', url);
+
+  // A short stay prices by the night, not by the month, so the structured data
+  // has to quote the same figure the card shows. Getting this wrong would put a
+  // nightly rate into a field every consumer reads as a monthly one.
+  const price = listing.nightly || listing.price;
+  const schema = {
+    '@context': 'https://schema.org',
+    '@type': ['Product', 'Residence'],
+    name: listing.title,
+    description: listing.description,
+    url,
+    image: listing.images.map((image) => `${SITE_ORIGIN}${image}`),
+    sku: listing.id,
+    category: listing.type,
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: listing.address,
+      addressLocality: listing.city,
+      addressCountry: 'US'
+    },
+    numberOfRooms: listing.beds,
+    floorSize: { '@type': 'QuantitativeValue', value: listing.area, unitCode: 'MTK' },
+    offers: {
+      '@type': 'Offer',
+      price,
+      priceCurrency: baseCurrency,
+      availability: listing.status === 'Sold'
+        ? 'https://schema.org/SoldOut'
+        : 'https://schema.org/InStock',
+      url,
+      seller: { '@type': 'RealEstateAgent', name: site.name }
+    }
+  };
+
+  document.querySelector('#listing-schema')?.remove();
+  const script = document.createElement('script');
+  script.type = 'application/ld+json';
+  script.id = 'listing-schema';
+  // textContent, not innerHTML: the payload is JSON, and assigning it as markup
+  // lets a "<" in any field break out of the script element entirely.
+  script.textContent = JSON.stringify(schema);
+  document.head.appendChild(script);
 }
 
 /* ---- footer & offices --------------------------------------------------- */

@@ -19,6 +19,19 @@
          policy above can keep script-src at 'self'. -->
     <script src="theme.js"></script>
     <meta name="description" content="Northwind Realty — homes for sale and to rent across Harbor Point, Northgate and Elmwood." />
+    <!-- Canonical and Open Graph. The site's canonical home is the bare directory,
+         not index.html: GitHub Pages serves both, and without this the two are
+         treated as duplicate pages. og:image points at a real photograph that
+         exists in assets/homes, because a link preview that 404s looks worse than
+         no preview at all. -->
+    <link rel="canonical" href="https://megapulse11-dot.github.io/friendly-fiesta/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Northwind Realty" />
+    <meta property="og:title" content="Northwind Realty — Homes for sale and to rent" />
+    <meta property="og:description" content="Homes for sale and to rent across Harbor Point, Northgate and Elmwood." />
+    <meta property="og:url" content="https://megapulse11-dot.github.io/friendly-fiesta/" />
+    <meta property="og:image" content="https://megapulse11-dot.github.io/friendly-fiesta/assets/homes/property_04_harbour_villa_twilight.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
     <title>Northwind Realty — Homes for sale and to rent</title>
@@ -99,8 +112,11 @@
               <a class="button button--secondary" href="contact.html">Book a valuation</a>
             </div>
             <div class="hero-meta">
-              <div><strong>7</strong><span>Live listings</span></div>
-              <div><strong>11 days</strong><span>Average to offer</span></div>
+              <!-- Static. The #stat-band further down the page is the data-driven
+                   one, so these three deliberately measure something else rather
+                   than repeating the same figures twice on one screen. -->
+              <div><strong>3</strong><span>Township offices</span></div>
+              <div><strong>4</strong><span>Specialists on the ground</span></div>
               <div><strong>98%</strong><span>Asking price achieved</span></div>
             </div>
           </div>
