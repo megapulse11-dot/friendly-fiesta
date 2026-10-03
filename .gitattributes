@@ -10,6 +10,14 @@
 *.svg  text eol=lf
 *.md   text eol=lf
 
+# Generated files. These are rewritten on every save (data.js) or every run of
+# scripts/build-sitemap.mjs (sitemap.xml), so if Git were allowed to convert
+# them to CRLF in the working tree it would report them as modified on the very
+# next regeneration - a diff that is nothing but line endings, and enough to make
+# somebody distrust the generator.
+sitemap.xml text eol=lf
+robots.txt  text eol=lf
+
 # Windows-native scripts.
 *.ps1  text eol=crlf
 *.cmd  text eol=crlf

@@ -30,6 +30,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check sitemap.xml matches data.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          # sitemap.xml is generated from data.json (scripts/build-sitemap.mjs),
+          # and the admin panel regenerates it on every save. This is the backstop
+          # for the case where somebody edited data.json by hand and pushed
+          # without opening the panel: a sitemap that disagrees with the listings
+          # is what search engines treat as authoritative, so shipping a stale one
+          # quietly tells crawlers the site has fewer homes than it does.
+          #
+          # Deliberately a check and not a regenerate. Publishing a file the
+          # repository does not contain means the live site and the git history
+          # disagree, and the next build would fail again for a different reason.
+          if [ ! -f scripts/build-sitemap.mjs ]; then
+            echo "::error::scripts/build-sitemap.mjs is missing - the sitemap can no longer be verified."
+            exit 1
+          fi
+          node scripts/build-sitemap.mjs --check
+
       - name: Assemble the public site only
         shell: bash
         run: |

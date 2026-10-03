@@ -3,7 +3,7 @@ const NORTHWIND = {
     "site":  {
                  "name":  "Northwind Realty",
                  "currency":  "KES",
-                 "tagline":  "Est. 1998  Harbor Point",
+                 "tagline":  "Est. 1998 · Harbor Point",
                  "heroTitle":  "Find the home that \u003cem\u003eactually\u003c/em\u003e fits.",
                  "heroLead":  "We represent a small, deliberately chosen portfolio across Harbor Point, Northgate and Elmwood - and we would rather show you four good houses than forty.",
                  "brandColor":  "#17594f",
@@ -12,7 +12,7 @@ const NORTHWIND = {
                  "email":  "hello@northwind.example",
                  "phone":  "+1 (555) 014-2200",
                  "footerNote":  "Independent estate agency for Harbor Point, Northgate and Elmwood. Selling, buying and renting since 1998.",
-                 "copyright":  " 2026 Northwind Realty. Sample content for demonstration.",
+                 "copyright":  "© 2026 Northwind Realty. Sample content for demonstration.",
                  "contentVersion":  "11"
              },
     "listings":  [
@@ -27,7 +27,7 @@ const NORTHWIND = {
                          "beds":  4,
                          "baths":  3,
                          "area":  3200,
-                         "lot":  "620 m?",
+                         "lot":  "620 m²",
                          "year":  2021,
                          "parking":  2,
                          "featured":  true,
@@ -185,7 +185,7 @@ const NORTHWIND = {
                          "beds":  4,
                          "baths":  3,
                          "area":  2400,
-                         "lot":  "310 m?",
+                         "lot":  "310 m²",
                          "year":  2016,
                          "parking":  2,
                          "featured":  true,
