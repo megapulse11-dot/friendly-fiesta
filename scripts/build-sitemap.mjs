@@ -73,6 +73,28 @@ const xml = (value) => String(value)
 const urlEntry = (loc, lastmod, changefreq, priority) =>
   `  <url>\n    <loc>${xml(loc)}</loc>\n    <lastmod>${lastmod}</lastmod>\n` +
   `    <changefreq>${changefreq}</changefreq>\n    <priority>${priority}</priority>\n  </url>\n`;
+/**
+ * Everything in the document except the date it was generated.
+ *
+ * This is what `--check` compares, and the reason it exists is subtle enough to
+ * be worth stating. The generator stamps `lastmod` with the day it runs, so a
+ * byte-for-byte comparison against the committed file would fail on every day
+ * after it was written - including in CI, on the first push that did not happen
+ * to regenerate it. That turns the guard into a build that breaks on a timer and
+ * nobody can reproduce.
+ *
+ * What actually needs checking is the content: that every live listing is listed,
+ * no sold one is, and the changefreq and priority are right. The date is a
+ * function of when the file was built, not of whether it is correct - so it is
+ * the one part deliberately excluded from the comparison.
+ */
+export function sitemapContent(document) {
+  return String(document)
+    .replace(/<lastmod>[^<]*<\/lastmod>/g, '<lastmod/>')
+    .replace(/\r\n/g, '\n')
+    .trim();
+}
+
 /** Build the whole document. Exported so a check can compare without running this. */
 export function buildSitemap(data, today) {
   const entries = STATIC_PAGES.map((page) => urlEntry(`${ORIGIN}${page.path}`, today, page.changefreq, page.priority));
@@ -123,11 +145,13 @@ if (invokedDirectly) {
       console.error('sitemap.xml does not exist. Run: node scripts/build-sitemap.mjs');
       process.exit(1);
     }
-    if (readFileSync(target, 'utf8') !== built) {
+    // Compared without the date - see sitemapContent for why a byte-for-byte
+    // comparison here would fail on a timer rather than on a real drift.
+    if (sitemapContent(readFileSync(target, 'utf8')) !== sitemapContent(built)) {
       console.error('sitemap.xml is out of date with data.json. Run: node scripts/build-sitemap.mjs');
       process.exit(1);
     }
-    console.log('sitemap.xml is up to date.');
+    console.log('sitemap.xml is up to date with data.json.');
     process.exit(0);
   }
 
