@@ -392,6 +392,112 @@ test('deposit and booking fee are ignored on a listing with no terms', () => {
   assert.equal(result.value.deposit, undefined);
   assert.equal(result.value.bookingFee, undefined);
 });
+test('the cleaning and service fees travel with the other charges', () => {
+  // Added with the rest of the stay charges. The point of these is that a guest
+  // sees the whole cost before booking, so dropping one silently would put back
+  // exactly the surprise they were added to remove.
+  const all = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95,
+    deposit: 300, cleaningFee: 55, serviceFee: 40, bookingFee: 45
+  }));
+  assert.equal(all.value.deposit, 300);
+  assert.equal(all.value.cleaningFee, 55);
+  assert.equal(all.value.serviceFee, 40);
+  assert.equal(all.value.bookingFee, 45);
+
+  // Absent rather than zero, same as the deposit: a stored 0 would read as
+  // "no cleaning fee", which is a promise the office never made.
+  const none = validateListing(Object.assign({}, goodRental, { stays: ['Nightly'], nightly: 95 }));
+  assert.equal(none.value.cleaningFee, undefined);
+  assert.equal(none.value.serviceFee, undefined);
+
+  const zeroed = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, cleaningFee: 0, serviceFee: 0
+  }));
+  assert.equal(zeroed.value.cleaningFee, undefined);
+  assert.equal(zeroed.value.serviceFee, undefined);
+});
+
+test('an absurd cleaning or service fee is refused rather than published', () => {
+  const cleaning = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, cleaningFee: 1_000_001
+  }));
+  assert.equal(cleaning.ok, false);
+  assert.match(cleaning.error, /cleaning fee/i);
+
+  const service = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, serviceFee: 1_000_001
+  }));
+  assert.equal(service.ok, false);
+  assert.match(service.error, /service fee/i);
+
+  // The boundary itself is allowed, as it is for the booking fee.
+  const edge = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, cleaningFee: 1_000_000, serviceFee: 1_000_000
+  }));
+  assert.equal(edge.ok, true);
+});
+
+test('cancellation is kept as text or as days, and ignored when neither is given', () => {
+  // Both shapes are real: a number covers "free up to N days", free text covers
+  // "balance due on arrival, non-refundable". The site prefers the text.
+  const text = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, cancellation: 'Free cancellation up to 14 days before arrival'
+  }));
+  assert.equal(text.value.cancellation, 'Free cancellation up to 14 days before arrival');
+
+  const days = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, cancellationDays: 7
+  }));
+  assert.equal(days.value.cancellationDays, 7);
+
+  // Both at once is allowed, and the site resolves it in favour of the text.
+  const both = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, cancellation: 'Balance on arrival', cancellationDays: 7
+  }));
+  assert.equal(both.value.cancellation, 'Balance on arrival');
+  assert.equal(both.value.cancellationDays, 7);
+
+  const neither = validateListing(Object.assign({}, goodRental, { stays: ['Nightly'], nightly: 95 }));
+  assert.equal(neither.value.cancellation, undefined);
+  assert.equal(neither.value.cancellationDays, undefined);
+
+  // Zero days is not a policy, and a year and a half is not either.
+  const zeroed = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, cancellationDays: 0
+  }));
+  assert.equal(zeroed.value.cancellationDays, undefined);
+
+  const absurd = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, cancellationDays: 9999
+  }));
+  assert.equal(absurd.value.cancellationDays, undefined);
+});
+
+test('an over-long cancellation term is truncated rather than stored whole', () => {
+  // It is shown verbatim beside a deposit figure, so it has to be bounded the
+  // same way every other free-text field on a listing is.
+  const result = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, cancellation: 'x'.repeat(500)
+  }));
+  assert.equal(result.ok, true);
+  assert.equal(result.value.cancellation.length, 200);
+});
+
+test('the charges and cancellation are ignored on a listing with no terms', () => {
+  // The same rule as the rates: these only mean something on a short stay, so a
+  // long let must not carry them.
+  const result = validateListing(Object.assign({}, goodRental, {
+    deposit: 300, cleaningFee: 55, serviceFee: 40, bookingFee: 45,
+    cancellation: 'Balance on arrival', cancellationDays: 7
+  }));
+  assert.equal(result.value.deposit, undefined);
+  assert.equal(result.value.cleaningFee, undefined);
+  assert.equal(result.value.serviceFee, undefined);
+  assert.equal(result.value.bookingFee, undefined);
+  assert.equal(result.value.cancellation, undefined);
+  assert.equal(result.value.cancellationDays, undefined);
+});
 
 test('availability dates are kept only when they are real calendar dates', () => {
   const ok = validateListing(Object.assign({}, goodRental, { availableFrom: '2026-09-25' }));

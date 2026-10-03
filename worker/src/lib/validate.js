@@ -43,7 +43,11 @@ const LIMITS = {
   status: 20,
   lot: 40,
   description: 4000,
-  features: 12
+  features: 12,
+  // One sentence's worth. The cancellation terms are shown verbatim on the rates
+  // table, so this is a real display limit rather than a storage one - a longer
+  // term would wrap over three lines beside a deposit figure.
+  cancellation: 200
 };
 
 const LAND_LIMITS = {
@@ -230,18 +234,20 @@ export function validateListing(body) {
     if (minNights) value.minNights = minNights;
 
     /*
-     * The two figures a guest cannot work out for themselves.
+     * The figures a guest cannot work out for themselves.
      *
-     * A short stay is quoted per night, and the things that decide what a week
-     * actually costs are the ones nobody can infer from the nightly rate: the
-     * deposit held against the property, and the booking fee added to the first
-     * payment. Both are optional - plenty of owners take neither, and a listing
-     * that says nothing about them is not incomplete, just straightforward.
+     * A short stay is quoted per night, and what decides what a week actually
+     * costs is everything the nightly rate does not cover: the deposit held
+     * against the property, the cleaning fee charged once, the service fee, and
+     * the booking fee added to the first payment. All optional - plenty of
+     * owners take none of them, and a listing that says nothing about them is
+     * not incomplete, just straightforward.
      *
-     * Capped rather than merely range-checked. A deposit is a multiple of the
-     * stay, not an arbitrary sum, and an agent typing six zeroes into a money
-     * field should be told rather than published: at a million, a deposit is
-     * more than the property.
+     * Capped rather than merely range-checked, one cap per figure rather than one
+     * shared: a deposit is a multiple of the stay and a booking fee is not, so an
+     * agent typing six zeroes into either field should be told rather than
+     * published. Absent stays absent - a stored 0 would render as "no cleaning
+     * fee", which is a promise the office never made.
      */
     const deposit = priceValue(source.deposit);
     if (deposit !== null) {
@@ -251,6 +257,22 @@ export function validateListing(body) {
       value.deposit = deposit;
     }
 
+    const cleaningFee = priceValue(source.cleaningFee);
+    if (cleaningFee !== null) {
+      if (cleaningFee > 1_000_000) {
+        return { ok: false, error: 'The cleaning fee looks too large - check the figure.' };
+      }
+      value.cleaningFee = cleaningFee;
+    }
+
+    const serviceFee = priceValue(source.serviceFee);
+    if (serviceFee !== null) {
+      if (serviceFee > 1_000_000) {
+        return { ok: false, error: 'The service fee looks too large - check the figure.' };
+      }
+      value.serviceFee = serviceFee;
+    }
+
     const bookingFee = priceValue(source.bookingFee);
     if (bookingFee !== null) {
       if (bookingFee > 1_000_000) {
@@ -258,6 +280,20 @@ export function validateListing(body) {
       }
       value.bookingFee = bookingFee;
     }
+
+    /*
+     * Cancellation, as free text or as a number of days.
+     *
+     * Both are accepted because both are real: a number is the common case and
+     * the site turns it into a sentence, while free text is needed for terms a
+     * number cannot express ("balance due on arrival, non-refundable"). Text
+     * wins on the site when both are sent.
+     */
+    const cancellation = clean(source.cancellation, LIMITS.cancellation);
+    if (cancellation) value.cancellation = cancellation;
+
+    const cancellationDays = wholeNumber(source.cancellationDays, 1, 365, 0);
+    if (cancellationDays) value.cancellationDays = cancellationDays;
   }
 
   const availableFrom = isoDate(source.availableFrom);

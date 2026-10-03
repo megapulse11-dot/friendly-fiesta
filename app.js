@@ -80,14 +80,26 @@ const isShortStay = (listing) =>
  * The nightly rate for a listing, preferring what the owner actually wrote and
  * falling back through weekly and monthly so a card can never show a blank.
  *
+ * `nightlyRateExact` is the same derivation unrounded. It exists because rounding
+ * a rate to display it and then comparing that rounded number against an exact
+ * one produces phantom differences: p14's weekly rate works out at 88.57 a night,
+ * which rounds to 89, so "89 minus 88.57" became a saving of 3 on a term that
+ * saves nothing. Comparisons are made on the exact figures and rounded once, at
+ * the point of display.
+ */
+function nightlyRateExact(listing) {
+  if (Number(listing.nightly) > 0) return Number(listing.nightly);
+  if (Number(listing.weekly) > 0) return Number(listing.weekly) / 7;
+  if (isRent(listing) && Number(listing.price) > 0) return Number(listing.price) / 30;
+  return 0;
+}
+
+/*
  * Rounding is to the nearest whole unit: a nightly rate of 172.857 would look
  * like a bug on a listing card, and nobody prices a weekend to the penny.
  */
 function nightlyRate(listing) {
-  if (Number(listing.nightly) > 0) return Math.round(listing.nightly);
-  if (Number(listing.weekly) > 0) return Math.round(Number(listing.weekly) / 7);
-  if (isRent(listing) && Number(listing.price) > 0) return Math.round(Number(listing.price) / 30);
-  return 0;
+  return Math.round(nightlyRateExact(listing));
 }
 
 function weeklyRate(listing) {
@@ -137,6 +149,69 @@ function isHot(listing) {
   return !Number.isNaN(until.getTime()) && until.getTime() >= Date.now();
 }
 
+/**
+ * The figure a visitor is actually quoted, and what it is called.
+ *
+ * On a short stay this is the first rate the card leads with, which is not always
+ * the nightly one: a place taking weeks and months but no nights leads with its
+ * weekly rate, so quoting a saving against a derived nightly figure would
+ * describe a price nobody is charged. Everywhere else it is the asking price.
+ *
+ * Returning the unit with the amount is what lets the saving be labelled in the
+ * same words the card used - "save 100 a week" beside a weekly rate, "save 250" on
+ * an asking price.
+ */
+function headlineRate(listing) {
+  const rates = shortStayRates(listing);
+  if (rates && rates.length) return { value: rates[0].value, unit: rates[0].unit };
+  return { value: Number(listing.price), unit: '' };
+}
+
+/**
+ * What the promotion is worth, in money.
+ *
+ * A "Hot deal" badge on its own tells a visitor something is reduced and nothing
+ * about by how much - so the figure they are being asked for is still unknown, and
+ * the badge is decoration rather than information. `originalPrice` is the price
+ * before the reduction, against the same headline rate the card leads with.
+ *
+ * Returns null when there is nothing honest to print, which is most of the
+ * conditions worth naming:
+ *
+ *   not hot         - an expired promotion must vanish entirely, not linger as a
+ *                     struck-through figure nobody is being charged any more.
+ *   no original     - a flag with no `originalPrice` says only "reduced", which is
+ *                     the badge itself, so the helper declines rather than
+ *                     inventing a number.
+ *   original <= now - a price that rose is not a saving. Printing "save -KES 40"
+ *                     would be worse than printing nothing.
+ */
+function dealSavings(listing) {
+  if (!isHot(listing)) return null;
+  const { value: now, unit } = headlineRate(listing);
+  const was = Number(listing.originalPrice);
+  if (!Number.isFinite(was) || was <= 0 || !Number.isFinite(now) || now <= 0) return null;
+  if (was <= now) return null;
+  return {
+    was,
+    now,
+    unit,
+    saving: was - now,
+    // Rounded, because "17.5% off" is false precision on a figure the visitor is
+    // about to be asked to trust to the penny.
+    percent: Math.round((1 - now / was) * 100),
+    until: listing.hotUntil || ''
+  };
+}
+
+/** The day a promotion ends, as words. Empty when it runs indefinitely. */
+function dealEndsOn(listing) {
+  if (!listing.hotUntil) return '';
+  const date = new Date(`${listing.hotUntil}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 /** "Available 1 – 20 Oct", or nothing when the owner has not said. */
 function availabilityWindow(listing) {
   const from = listing.availableFrom;
@@ -152,6 +227,90 @@ function availabilityWindow(listing) {
     return `Available ${fmt(from)} – ${fmt(to)}${suffix}`;
   }
   return from ? `Available from ${fmt(from)}` : `Available until ${fmt(to)}`;
+}
+
+/*
+ * The money around a stay that is not the rate.
+ *
+ * A nightly figure is what a guest compares on, and it is never the whole bill.
+ * The deposit is refundable but has to be found; the cleaning fee is charged once
+ * per stay however long that stay is; the service fee is a share of the booking;
+ * the booking fee lands with the first payment. All four are named here, and
+ * only when the owner has actually set them - the same "absent rather than zero"
+ * rule the deposit already worked by. A stored 0 would render as "no cleaning
+ * fee", which is a promise nobody made.
+ *
+ * The note on each one is the part that stops it being misread. A deposit printed
+ * in the same weight as a nightly rate looks like a charge every night, when it
+ * comes back; a cleaning fee printed as a nightly rate looks like it repeats.
+ */
+const STAY_CHARGES = [
+  { key: 'deposit', label: 'Refundable deposit', short: 'Deposit', note: 'held against the property, returned after check-out' },
+  { key: 'cleaningFee', label: 'Cleaning fee', short: 'Cleaning fee', note: 'once per stay, not per night' },
+  { key: 'serviceFee', label: 'Service fee', short: 'Service fee', note: 'a share of the booking' },
+  { key: 'bookingFee', label: 'Booking fee', short: 'Booking fee', note: 'charged with the first payment' }
+];
+
+function stayCharges(listing) {
+  return STAY_CHARGES
+    .filter((charge) => Number(listing[charge.key]) > 0)
+    .map((charge) => ({ ...charge, value: Number(listing[charge.key]) }));
+}
+
+/**
+ * What the cancellation terms are, in one sentence.
+ *
+ * `cancellation` is free text and wins, because an agency may need to say
+ * something a number cannot ("balance due on arrival, non-refundable"). The
+ * numeric `cancellationDays` is the fallback for the common case, and produces
+ * the sentence an owner would otherwise have to write by hand.
+ */
+function cancellationPolicy(listing) {
+  if (typeof listing.cancellation === 'string' && listing.cancellation.trim()) {
+    return listing.cancellation.trim();
+  }
+  const days = Number(listing.cancellationDays);
+  if (Number.isFinite(days) && days > 0) {
+    return `Free cancellation up to ${days} day${days === 1 ? '' : 's'} before arrival`;
+  }
+  return '';
+}
+
+/*
+ * What a week or a month actually costs per night.
+ *
+ * A card that prints "KES 560 per week" beside "KES 95 a night" leaves the reader
+ * to divide, and most people do not - they read the smaller number as the better
+ * deal and book the wrong length. So each longer term carries the per-night
+ * figure it works out at, and the difference from the nightly rate as an amount.
+ *
+ * The saving is only ever printed when it is genuinely positive. p14 takes weeks
+ * and months, and its weekly rate costs more per night than its monthly one, so
+ * "save" would be false there. An owner who has priced a term above the nightly
+ * rate has usually done it on purpose - a minimum-stay week during a festival -
+ * and saying so is more useful than hiding it.
+ */
+const NIGHTS_PER_TERM = { night: 1, week: 7, month: 30 };
+
+function rateComparison(listing) {
+  const rates = shortStayRates(listing);
+  if (!rates) return null;
+  // The comparison is made on the exact nightly rate, never the rounded one -
+  // see nightlyRateExact for why that distinction matters.
+  const exactNightly = nightlyRateExact(listing);
+  const longer = rates
+    .filter((rate) => rate.unit !== 'night')
+    .map((rate) => {
+      const span = NIGHTS_PER_TERM[rate.unit] || 1;
+      const perNightExact = rate.value / span;
+      return {
+        ...rate,
+        perNight: Math.round(perNightExact),
+        // The saving over the whole term, not just the night.
+        saving: Math.max(0, Math.round((exactNightly - perNightExact) * span))
+      };
+    });
+  return { nightly: Math.round(exactNightly), longer };
 }
 const formatArea = (listing) => `${numberFormat.format(listing.area)} ft²`;
 
@@ -186,9 +345,16 @@ const formatListed = (value) => new Date(`${value}T00:00:00`).toLocaleDateString
  * filled in by paintPrices(). That keeps the amount in one place — the data — and
  * means switching currency is a single pass over the document rather than a
  * re-render of every list on whichever page happens to be open.
+ *
+ * `prefix` was added for the short-stay work, where a figure is read as part of a
+ * sentence rather than on its own - "≈ KES 80 a night", "save KES 105". Painting
+ * the label here rather than writing it into the markup means the word moves with
+ * the currency symbol instead of sitting in front of a number that has already
+ * been converted.
  */
-const priceAttrs = (amount, suffix = '', compact = false) =>
-  `data-price="${amount}"${suffix ? ` data-price-suffix="${suffix}"` : ''}${compact ? ' data-price-compact' : ''}`;
+const priceAttrs = (amount, suffix = '', compact = false, prefix = '') =>
+  `data-price="${amount}"${prefix ? ` data-price-prefix="${escapeHtml(prefix)}"` : ''}` +
+  `${suffix ? ` data-price-suffix="${escapeHtml(suffix)}"` : ''}${compact ? ' data-price-compact' : ''}`;
 
 function announce(message) {
   const toast = $('#toast');
@@ -345,8 +511,12 @@ function paintPrices(scope = document) {
   $$('[data-price]', scope).forEach((element) => {
     const amount = Number(element.dataset.price) || 0;
     const formatter = element.hasAttribute('data-price-compact') ? compactFormatter(code) : moneyFormatter(code);
+    const prefix = element.dataset.pricePrefix;
     const suffix = element.dataset.priceSuffix;
-    element.innerHTML = formatter.format(convert(amount, code)) + (suffix ? ` <small>${escapeHtml(suffix)}</small>` : '');
+    element.innerHTML =
+      (prefix ? `${escapeHtml(prefix)} ` : '')
+      + formatter.format(convert(amount, code))
+      + (suffix ? ` <small>${escapeHtml(suffix)}</small>` : '');
   });
 }
 
@@ -637,6 +807,7 @@ function propertyCard(listing, options = {}) {
       </div>
       <div class="card-body">
         ${cardPriceBlock(listing)}
+        ${cardDeal(listing)}
         <h3 class="card-title"><a href="property.html?id=${listing.id}">${escapeHtml(listing.title)}</a></h3>
         <p class="card-address">${icon('pin', 'icon--sm')}${escapeHtml(listing.address)}, ${escapeHtml(listing.city)}</p>
         <div class="card-specs">${cardSpecs(listing)}</div>
@@ -665,8 +836,16 @@ function cardPriceBlock(listing) {
   }
 
   const head = rates[0];
-  const rest = rates.slice(1).map((rate) => `
-    <span ${priceAttrs(rate.value, ` / ${rate.unit}`, true)}></span>`).join('');
+  const comparison = rateComparison(listing);
+  const rest = rates.slice(1).map((rate) => {
+    // The per-night figure goes on the card too. A week priced at 560 beside a
+    // night priced at 95 is not a comparison - it is a division the reader has to
+    // do, and most read the smaller number as the better deal.
+    const longer = comparison?.longer.find((item) => item.unit === rate.unit);
+    const equivalent = longer ? ` <span class="card-rate-equiv">≈ <span ${priceAttrs(longer.perNight)}></span>/night</span>` : '';
+    return `
+      <span ${priceAttrs(rate.value, ` / ${rate.unit}`)}>${equivalent}</span>`;
+  }).join('');
 
   return `
     <p class="card-price card-price--stay">
@@ -675,21 +854,57 @@ function cardPriceBlock(listing) {
     </p>`;
 }
 
-/** The line under the specs: minimum stay, the window it is open for, and terms. */
+/**
+ * The line under the specs.
+ *
+ * The things that decide whether this place can be booked at all: the shortest
+ * stay, the window it is open for, and which charges apply. The charges are named
+ * here rather than left to the detail page because someone comparing three
+ * cottages on a card needs to know which one wants a deposit before they start
+ * arranging a weekend, not after.
+ */
 function shortStayNote(listing) {
   if (!isShortStay(listing)) return '';
   const notes = [];
   const nights = minNights(listing);
   if (nights > 1) notes.push(`Minimum ${nights} nights`);
+
+  // A live promotion is the one thing on this line worth reading twice, so it
+  // leads after the minimum rather than being lost among the charge names.
+  const deal = dealSavings(listing);
+  if (deal) notes.push(`Hot deal · save ${deal.percent}%`);
+
   const window = availabilityWindow(listing);
   if (window) notes.push(window);
-  // Named here rather than left to the detail page. Someone comparing three
-  // cottages on a card needs to know which one wants a deposit before they
-  // start arranging a weekend, not after.
-  if (Number(listing.bookingFee) > 0) notes.push('Booking fee');
-  if (Number(listing.deposit) > 0) notes.push('Deposit');
+  if (deal && deal.until) notes.push(`ends ${dealEndsOn(listing)}`);
+
+  // The card runs out of room fast, so it gets the short names. "Refundable
+  // deposit" is the honest label on the rates table; on a line already carrying a
+  // minimum stay, a window and a promotion, it is four words too many - and the
+  // detail page is one click away.
+  for (const charge of stayCharges(listing)) notes.push(charge.short);
   if (!notes.length) return '';
   return `<p class="card-stay">${icon('calendar', 'icon--sm')}${escapeHtml(notes.join(' · '))}</p>`;
+}
+
+/**
+ * A promotion on a card, in one line.
+ *
+ * Deliberately a separate element from the price block: a struck-through figure
+ * sitting inside the price line gets read as the price, and the badge above already
+ * says the thing is reduced. What is missing from both is by how much, which is
+ * the whole reason `originalPrice` was added.
+ */
+function cardDeal(listing) {
+  const deal = dealSavings(listing);
+  if (!deal) return '';
+  // Named in the unit the card leads with, for the same reason as the banner.
+  const per = deal.unit ? ` a ${deal.unit}` : '';
+  return `
+    <p class="card-deal">
+      <span class="card-deal-was"><span ${priceAttrs(deal.was)}></span></span>
+      <span class="card-deal-save">Save <span ${priceAttrs(deal.saving)}></span> · ${deal.percent}% off${per}</span>
+    </p>`;
 }
 
 /* ---- theme --------------------------------------------------------------- */
@@ -1329,72 +1544,127 @@ function initResults() {
   render();
 }
 
-/**
+/*
  * The rates table on a short stay.
  *
- * Every rate carries its own unit, because a night and a month are not the same
- * purchase and pretending otherwise is how a weekend ends up looking like a
- * bargain. The note underneath says the two things a visitor cannot infer from
- * the numbers: the shortest booking, and the window the place is actually open.
+ * Everything a guest is asked to pay, and everything that decides whether they
+ * can book it, in one place rather than spread across a card and a page they may
+ * not reach:
+ *
+ *   - the rates, each with its own unit, because a night and a month are not the
+ *     same purchase and pretending otherwise is how a weekend looks like a bargain
+ *   - the per-night figure each longer term works out at, so nobody has to divide
+ *   - the charges around the stay, labelled as what they are
+ *   - the cancellation terms, in words
+ *   - the shortest booking and the window it is open for
+ *   - a way to act on it
  */
 function ratesTable(listing) {
   const rates = shortStayRates(listing);
   if (!rates) return '';
+  const comparison = rateComparison(listing);
 
-  const rows = rates.map((rate) => `
+  const rows = rates.map((rate) => {
+    // The nightly rate needs no per-night equivalent - it is the unit itself.
+    const longer = comparison?.longer.find((item) => item.unit === rate.unit);
+    const equivalent = longer
+      ? `<span class="rates-equivalent">
+          <span ${priceAttrs(longer.perNight, '', false, '≈')}></span> a night
+          ${longer.saving > 0 ? `<span class="rates-saving" ${priceAttrs(longer.saving, ` over the ${rate.unit}`, false, 'save ')}></span>` : ''}
+        </span>`
+      : '';
+    return `
     <div class="rates-row">
       <dt>Per ${rate.unit.replace(/s$/, '')}</dt>
-      <dd ${priceAttrs(rate.value)}></dd>
-    </div>`).join('');
+      <dd ${priceAttrs(rate.value)}>${equivalent}</dd>
+    </div>`;
+  }).join('');
 
   /*
-   * What a guest actually pays is never just the nightly rate. The deposit is
-   * refundable but has to be found, and the booking fee is charged on top of
-   * the first payment - so both are named here rather than left to be
-   * discovered at the booking stage.
-   *
-   * Labelled as what they are. A deposit that reads like a price is a price
-   * people will assume they owe.
+   * What a guest actually pays is never just the nightly rate, and a charge
+   * printed in the same weight as a rate reads as a rate. The note on each line is
+   * what separates them: a deposit comes back, a cleaning fee happens once.
    */
-  const terms = [];
-  if (Number(listing.deposit) > 0) {
-    terms.push(`<div class="rates-row rates-row--term">
-      <dt>Refundable deposit</dt>
-      <dd ${priceAttrs(listing.deposit)}></dd>
-    </div>`);
-  }
-  if (Number(listing.bookingFee) > 0) {
-    terms.push(`<div class="rates-row rates-row--term">
-      <dt>Booking fee</dt>
-      <dd ${priceAttrs(listing.bookingFee)}></dd>
-    </div>`);
-  }
+  const terms = stayCharges(listing).map((charge) => `
+    <div class="rates-row rates-row--term">
+      <dt>${escapeHtml(charge.label)} <small>${escapeHtml(charge.note)}</small></dt>
+      <dd ${priceAttrs(charge.value)}></dd>
+    </div>`).join('');
 
   const notes = [];
   const nights = minNights(listing);
   if (nights > 1) notes.push(`Minimum stay ${nights} nights`);
   const window = availabilityWindow(listing);
   if (window) notes.push(window);
+  const cancellation = cancellationPolicy(listing);
+  if (cancellation) notes.push(cancellation);
 
   return `
     <section class="detail-section">
       <h2>Rates</h2>
       <dl class="rates">
         ${rows}
-        ${terms.join('')}
+        ${terms}
         ${notes.length ? `<div class="rates-note">${icon('calendar', 'icon--sm')}${escapeHtml(notes.join(' · '))}</div>` : ''}
       </dl>
+      ${availabilityCta(listing)}
     </section>`;
 }
 
-/** The promotion banner. Says what the promotion is, not just that there is one. */
+/**
+ * The way to act on the rates.
+ *
+ * A rates table with nothing to press is a price list. This opens the viewing
+ * dialog that already exists further up the page, rather than inventing a second
+ * enquiry path, and asks for dates - because "is it free that weekend" is the
+ * question a short stay is browsed with, and it is the one thing the table cannot
+ * answer.
+ */
+function availabilityCta(listing) {
+  const window = availabilityWindow(listing);
+  const nights = minNights(listing);
+  const detail = [nights > 1 ? `From ${nights} nights` : '', window].filter(Boolean).join(' · ');
+  return `
+    <div class="rates-cta">
+      <button class="button button--primary" type="button" data-check-availability>
+        ${icon('calendar', 'icon--sm')} Check availability
+      </button>
+      ${detail ? `<p class="rates-cta-note">${icon('check', 'icon--sm')}${escapeHtml(detail)}</p>` : ''}
+    </div>`;
+}
+
+/**
+ * The promotion banner. Says what the promotion is, not just that there is one.
+ *
+ * When there is an original price it is stated, because "Hot deal" alone does not
+ * let anybody decide whether it is worth anything. The end date is always there -
+ * a deal with no date is one that quietly never expires, and the visitor is the
+ * only one who will ever notice.
+ */
 function hotBanner(listing) {
   if (!isHot(listing)) return '';
-  const until = listing.hotUntil
-    ? ` · ends ${new Date(`${listing.hotUntil}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
-    : '';
   const stay = isShortStay(listing) ? ' on a short stay' : '';
-  return `<p class="hot-banner">${icon('sparkle', 'icon--sm')} Hot deal${stay}${until}</p>`;
+  const deal = dealSavings(listing);
+  const ends = dealEndsOn(listing);
+  const until = ends ? ` · ends ${ends}` : '';
+
+  if (!deal) {
+    // Hot, but with nothing to quantify. The date is still the useful half.
+    return `<p class="hot-banner">${icon('sparkle', 'icon--sm')} Hot deal${stay}${until}</p>`;
+  }
+
+  // "save 100 a week" beside a weekly rate, "save 25 a night" beside a nightly one.
+  // Taking the unit from the rate itself is what keeps those two in step.
+  const per = deal.unit ? ` ${deal.unit}` : '';
+  return `
+    <div class="hot-banner hot-banner--priced">
+      <p class="hot-banner-line">${icon('sparkle', 'icon--sm')} Hot deal${stay}${until}</p>
+      <p class="hot-deal">
+        <span class="hot-deal-was"><span ${priceAttrs(deal.was)}></span></span>
+        <span class="hot-deal-now"><span ${priceAttrs(deal.now, per)}></span></span>
+        <span class="hot-deal-save">Save <span ${priceAttrs(deal.saving)}></span> · ${deal.percent}% off</span>
+      </p>
+    </div>`;
 }
 
 /* ---- property detail ---------------------------------------------------- */
@@ -1498,12 +1768,19 @@ function initDetail() {
         <div class="form-grid">
           <label class="field"><span>Name</span><input name="name" type="text" autocomplete="name" required /></label>
           <label class="field"><span>Email</span><input name="email" type="email" autocomplete="email" required /></label>
-          <label class="field"><span>Preferred date</span><input name="date" type="date" required /></label>
+          <label class="field"><span id="date-label">Preferred date</span><input name="date" type="date" required /></label>
+          <label class="field" id="nights-field" hidden><span>Nights</span>
+            <select name="nights">
+              ${[1, 2, 3, 4, 5, 6, 7, 14, 28, 30]
+                .map((n) => `<option value="${n}">${n}${n === 7 ? ' (a week)' : n === 28 || n === 30 ? ' (a month)' : ''}</option>`)
+                .join('')}
+            </select>
+          </label>
           <label class="field"><span>Phone <small>Optional</small></span><input name="phone" type="tel" autocomplete="tel" /></label>
         </div>
         <footer class="dialog-actions">
           <button class="button button--secondary" type="button" data-close-dialog>Cancel</button>
-          <button class="button button--primary" type="submit">Request viewing</button>
+          <button class="button button--primary" type="submit" id="viewing-submit">Request viewing</button>
         </footer>
       </form>
     </dialog>`;
@@ -1548,12 +1825,38 @@ function initDetail() {
     }
   });
 
+  /*
+   * One dialog, two intents.
+   *
+   * "Book a viewing" and "Check availability" ask for almost the same thing and
+   * arrive as the same enquiry, so they share the form rather than growing two.
+   * What changes is the wording and the one extra question - how many nights -
+   * because a weekend enquiry and a viewing request are not the same message to
+   * an agent, and sending both labelled "viewing" loses the distinction before
+   * anybody reads them.
+   */
   const dialog = $('#viewing-dialog', root);
-  $('[data-viewing]', root).addEventListener('click', () => {
+  const nightsField = $('#nights-field', root);
+  const nightsControl = $('select[name="nights"]', root);
+  let dialogIntent = 'viewing';
+
+  const openDialog = (intent) => {
+    dialogIntent = intent;
+    const availability = intent === 'availability';
+    $('#viewing-title', root).textContent = availability ? 'Check availability' : 'Book a viewing';
+    $('#date-label', root).textContent = availability ? 'Arrival date' : 'Preferred date';
+    $('#viewing-submit', root).textContent = availability ? 'Request availability' : 'Request viewing';
+    nightsField.hidden = !availability;
+    // Defaulted to the shortest booking the listing actually accepts, so the
+    // form cannot be submitted asking for a stay the owner will refuse.
+    if (availability && nightsControl) nightsControl.value = String(minNights(listing));
     dialog.showModal();
     document.body.classList.add('dialog-open');
     $('#viewing-form input[name="name"]', root).focus();
-  });
+  };
+
+  $('[data-viewing]', root).addEventListener('click', () => openDialog('viewing'));
+  $('[data-check-availability]', root)?.addEventListener('click', () => openDialog('availability'));
   $$('[data-close-dialog]', root).forEach((button) => button.addEventListener('click', () => dialog.close()));
   dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });
   dialog.addEventListener('close', () => document.body.classList.remove('dialog-open'));
@@ -1564,18 +1867,24 @@ function initDetail() {
     const submit = lockSubmit(form);
 
     try {
+      const availability = dialogIntent === 'availability';
       await postEnquiry({
-        kind: 'booking',
+        // The agent inbox files these separately, and an availability enquiry that
+        // arrives labelled "booking" is one somebody has to read twice to work out.
+        kind: availability ? 'availability' : 'booking',
         name: fields.get('name'),
         email: fields.get('email'),
         phone: fields.get('phone'),
         date: fields.get('date'),
+        nights: availability ? fields.get('nights') : null,
         listingId: listing.id,
         listingTitle: listing.title
       }, form);
       form.reset();
       dialog.close();
-      announce(`Viewing request sent for ${listing.title}`);
+      announce(availability
+        ? `Availability request sent for ${listing.title}`
+        : `Viewing request sent for ${listing.title}`);
     } catch (problem) {
       announce(problem.message);
     } finally {

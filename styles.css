@@ -338,12 +338,47 @@ input[name="botcheck"] { position: absolute; left: -9999px; width: 1px; height: 
 .rates-row dd { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.3px; }
 .rates-note { display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); color: var(--muted); background: var(--surface-subtle); font-size: 13px; }
 
-/* Deposit and booking fee. Set apart from the nightly rates because they are not
-   part of the stay's cost: the deposit comes back, the booking fee is charged
-   once. Same weight as a rate would read as a charge owed every night. */
+/* Charges around the stay. Set apart from the rates because they are not part of
+   what the guest sleeps in: the deposit comes back, the cleaning fee happens once
+   however long the stay is. Same weight as a rate would read as a charge every
+   night, and the note beside each label is what stops that. */
 .rates-row--term { background: var(--surface-subtle); }
 .rates-row--term dt { color: var(--muted); font-weight: 500; }
+.rates-row--term dt small { display: block; color: var(--muted); font-weight: 400; font-size: 12.5px; }
 .rates-row--term dd { font-size: 14.5px; font-weight: 600; color: var(--muted-strong); letter-spacing: 0; }
+
+/* What a longer term works out at per night.
+   Printed under the rate rather than beside it, because it is a derivation of that
+   rate rather than a second rate - and putting it at the same weight invites the
+   reader to compare the two numbers directly, which is the mistake. */
+.rates-equivalent {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.rates-saving { color: var(--brand); font-weight: 600; }
+
+/* The call to action under the rates. A rates table with nothing to press is a
+   price list; this is where "can I have those dates" gets answered. */
+.rates-cta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-top: 18px;
+}
+.rates-cta-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.rates-cta-note .icon { color: var(--brand); }
 
 /* The hot banner on a detail page, and the strip on the home page. */
 .hot-banner {
@@ -359,6 +394,41 @@ input[name="botcheck"] { position: absolute; left: -9999px; width: 1px; height: 
   font-size: 14px;
   font-weight: 600;
 }
+
+/* A priced promotion. The badge alone said "reduced" without saying by how much,
+   which is the one half of the information a reader needs to decide anything. The
+   was-figure is struck through and quiet so it cannot be mistaken for the price. */
+.hot-banner--priced { display: block; }
+.hot-banner-line { display: flex; align-items: center; gap: 11px; margin: 0; }
+.hot-deal {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 0 30px;
+  color: var(--muted-strong);
+  font-size: 15px;
+}
+.hot-deal-was { text-decoration: line-through; opacity: .7; font-weight: 500; }
+.hot-deal-now { color: var(--hot); font-weight: 700; }
+.hot-deal-now small { color: var(--muted); font-size: 12.5px; font-weight: 500; letter-spacing: 0; }
+.hot-deal-save { font-size: 13.5px; font-weight: 600; }
+
+/* The same promotion on a card. Sits under the price rather than inside it, so the
+   struck-through figure is never adjacent to the one number being charged. */
+.card-deal {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: -6px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.card-deal-was { color: var(--muted); text-decoration: line-through; font-weight: 500; }
+.card-deal-save { color: var(--hot); }
+.card-rate-equiv { color: var(--muted); font-size: 13px; font-weight: 500; }
+
 .hot-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 26px; }
 .hot-empty { color: var(--muted); font-size: 15px; }
 /* The shortcut into just the promotions, sitting where the sort control is so it

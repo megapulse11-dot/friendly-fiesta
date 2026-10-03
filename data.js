@@ -167,12 +167,16 @@ const NORTHWIND = {
                                        "Weekly"
                                    ],
                          "weekly":  420,
+                         "originalPrice":  520,
                          "minNights":  1,
                          "hot":  true,
                          "hotUntil":  "2026-10-20",
                          "availableFrom":  "2026-09-25",
                          "deposit":  700,
-                         "bookingFee":  60
+                         "cleaningFee":  90,
+                         "serviceFee":  55,
+                         "bookingFee":  60,
+                         "cancellationDays":  5
                      },
                      {
                          "id":  "p4",
@@ -435,10 +439,16 @@ const NORTHWIND = {
                                    ],
                          "nightly":  95,
                          "weekly":  560,
+                         "originalPrice":  120,
                          "minNights":  2,
+                         "hot":  true,
+                         "hotUntil":  "2026-11-30",
                          "availableTo":  "2027-01-15",
                          "deposit":  300,
-                         "bookingFee":  45
+                         "cleaningFee":  55,
+                         "serviceFee":  40,
+                         "bookingFee":  45,
+                         "cancellationDays":  7
                      },
                      {
                          "id":  "p9",
@@ -691,7 +701,10 @@ const NORTHWIND = {
                          "removedPhotos":  [
 
                                            ],
-                         "deposit":  500
+                         "deposit":  500,
+                         "cleaningFee":  120,
+                         "serviceFee":  85,
+                         "cancellation":  "Free cancellation up to 14 days before arrival; the deposit is returned in full after check-out"
                      },
                      {
                          "id":  "p14",
@@ -735,7 +748,10 @@ const NORTHWIND = {
                          "removedPhotos":  [
 
                                            ],
-                         "deposit":  900
+                         "deposit":  900,
+                         "cleaningFee":  140,
+                         "serviceFee":  95,
+                         "cancellationDays":  30
                      }
                  ],
     "agents":  [
