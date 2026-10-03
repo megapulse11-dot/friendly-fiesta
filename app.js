@@ -675,7 +675,7 @@ function cardPriceBlock(listing) {
     </p>`;
 }
 
-/** The line under the specs: minimum stay, and the window it is open for. */
+/** The line under the specs: minimum stay, the window it is open for, and terms. */
 function shortStayNote(listing) {
   if (!isShortStay(listing)) return '';
   const notes = [];
@@ -683,6 +683,11 @@ function shortStayNote(listing) {
   if (nights > 1) notes.push(`Minimum ${nights} nights`);
   const window = availabilityWindow(listing);
   if (window) notes.push(window);
+  // Named here rather than left to the detail page. Someone comparing three
+  // cottages on a card needs to know which one wants a deposit before they
+  // start arranging a weekend, not after.
+  if (Number(listing.bookingFee) > 0) notes.push('Booking fee');
+  if (Number(listing.deposit) > 0) notes.push('Deposit');
   if (!notes.length) return '';
   return `<p class="card-stay">${icon('calendar', 'icon--sm')}${escapeHtml(notes.join(' · '))}</p>`;
 }
@@ -1342,6 +1347,29 @@ function ratesTable(listing) {
       <dd ${priceAttrs(rate.value)}></dd>
     </div>`).join('');
 
+  /*
+   * What a guest actually pays is never just the nightly rate. The deposit is
+   * refundable but has to be found, and the booking fee is charged on top of
+   * the first payment - so both are named here rather than left to be
+   * discovered at the booking stage.
+   *
+   * Labelled as what they are. A deposit that reads like a price is a price
+   * people will assume they owe.
+   */
+  const terms = [];
+  if (Number(listing.deposit) > 0) {
+    terms.push(`<div class="rates-row rates-row--term">
+      <dt>Refundable deposit</dt>
+      <dd ${priceAttrs(listing.deposit)}></dd>
+    </div>`);
+  }
+  if (Number(listing.bookingFee) > 0) {
+    terms.push(`<div class="rates-row rates-row--term">
+      <dt>Booking fee</dt>
+      <dd ${priceAttrs(listing.bookingFee)}></dd>
+    </div>`);
+  }
+
   const notes = [];
   const nights = minNights(listing);
   if (nights > 1) notes.push(`Minimum stay ${nights} nights`);
@@ -1353,6 +1381,7 @@ function ratesTable(listing) {
       <h2>Rates</h2>
       <dl class="rates">
         ${rows}
+        ${terms.join('')}
         ${notes.length ? `<div class="rates-note">${icon('calendar', 'icon--sm')}${escapeHtml(notes.join(' · '))}</div>` : ''}
       </dl>
     </section>`;

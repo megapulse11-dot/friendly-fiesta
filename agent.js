@@ -294,7 +294,7 @@ function applyStayVisibility() {
   // or a sale would be submitted carrying rates the website will never show.
   if (panel.hidden) {
     $$('input[type="checkbox"]', panel).forEach((box) => { box.checked = false; });
-    ['#f-nightly', '#f-weekly', '#f-from', '#f-to'].forEach((id) => { if ($(id)) $(id).value = ''; });
+    ['#f-nightly', '#f-weekly', '#f-deposit', '#f-booking-fee', '#f-from', '#f-to'].forEach((id) => { if ($(id)) $(id).value = ''; });
   }
 }
 
@@ -444,6 +444,11 @@ function collectListing() {
     if (number('#f-min-nights') > 1) listing.minNights = number('#f-min-nights');
     if (text('#f-from')) listing.availableFrom = text('#f-from');
     if (text('#f-to')) listing.availableTo = text('#f-to');
+    // What a guest owes beyond the nightly rate. Optional, and sent only when
+    // filled in - a listing that takes neither says nothing rather than showing
+    // a deposit of zero, which reads as "no deposit required" by accident.
+    if (number('#f-deposit')) listing.deposit = number('#f-deposit');
+    if (number('#f-booking-fee')) listing.bookingFee = number('#f-booking-fee');
   }
 
   return listing;

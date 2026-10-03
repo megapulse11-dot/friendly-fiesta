@@ -13,7 +13,7 @@ const NORTHWIND = {
                  "phone":  "+1 (555) 014-2200",
                  "footerNote":  "Independent estate agency for Harbor Point, Northgate and Elmwood. Selling, buying and renting since 1998.",
                  "copyright":  " 2026 Northwind Realty. Sample content for demonstration.",
-                 "contentVersion":  "10"
+                 "contentVersion":  "11"
              },
     "listings":  [
                      {
@@ -170,7 +170,9 @@ const NORTHWIND = {
                          "minNights":  1,
                          "hot":  true,
                          "hotUntil":  "2026-10-20",
-                         "availableFrom":  "2026-09-25"
+                         "availableFrom":  "2026-09-25",
+                         "deposit":  700,
+                         "bookingFee":  60
                      },
                      {
                          "id":  "p4",
@@ -434,7 +436,9 @@ const NORTHWIND = {
                          "nightly":  95,
                          "weekly":  560,
                          "minNights":  2,
-                         "availableTo":  "2027-01-15"
+                         "availableTo":  "2027-01-15",
+                         "deposit":  300,
+                         "bookingFee":  45
                      },
                      {
                          "id":  "p9",
@@ -686,7 +690,8 @@ const NORTHWIND = {
                          "availableFrom":  "2026-10-05",
                          "removedPhotos":  [
 
-                                           ]
+                                           ],
+                         "deposit":  500
                      },
                      {
                          "id":  "p14",
@@ -729,7 +734,8 @@ const NORTHWIND = {
                          "availableTo":  "2027-04-30",
                          "removedPhotos":  [
 
-                                           ]
+                                           ],
+                         "deposit":  900
                      }
                  ],
     "agents":  [

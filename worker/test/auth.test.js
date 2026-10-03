@@ -345,6 +345,53 @@ test('a minimum stay is only kept inside a sane range', () => {
   const absurd = validateListing(Object.assign({}, goodRental, { stays: ['Weekly'], minNights: 9999 }));
   assert.equal(absurd.value.minNights, undefined);
 });
+test('a deposit and a booking fee are kept when given, and ignored when not', () => {
+  const both = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, deposit: 300, bookingFee: 45
+  }));
+  assert.equal(both.value.deposit, 300);
+  assert.equal(both.value.bookingFee, 45);
+
+  // Absent rather than zero. A stored 0 would render as a deposit of nothing,
+  // which reads as "no deposit required" - a promise the office never made.
+  const neither = validateListing(Object.assign({}, goodRental, { stays: ['Nightly'], nightly: 95 }));
+  assert.equal(neither.value.deposit, undefined);
+  assert.equal(neither.value.bookingFee, undefined);
+
+  const zeroed = validateListing(Object.assign({}, goodRental, { stays: ['Nightly'], deposit: 0 }));
+  assert.equal(zeroed.value.deposit, undefined);
+});
+
+test('a deposit larger than any property is refused rather than published', () => {
+  // A deposit is a multiple of a stay, not an arbitrary sum. Six zeroes typed
+  // into a money box is a typo, and publishing it would put a figure on the page
+  // that no guest could ever pay.
+  const absurd = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, deposit: 50_000_001
+  }));
+  assert.equal(absurd.ok, false);
+  assert.match(absurd.error, /deposit/i);
+
+  const fee = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, bookingFee: 1_000_001
+  }));
+  assert.equal(fee.ok, false);
+  assert.match(fee.error, /booking fee/i);
+
+  // The boundary itself is allowed.
+  const edge = validateListing(Object.assign({}, goodRental, {
+    stays: ['Nightly'], nightly: 95, deposit: 50_000_000
+  }));
+  assert.equal(edge.ok, true);
+});
+
+test('deposit and booking fee are ignored on a listing with no terms', () => {
+  // The same rule as the rates: these only mean something on a short stay, so a
+  // long let must not carry them.
+  const result = validateListing(Object.assign({}, goodRental, { deposit: 300, bookingFee: 45 }));
+  assert.equal(result.value.deposit, undefined);
+  assert.equal(result.value.bookingFee, undefined);
+});
 
 test('availability dates are kept only when they are real calendar dates', () => {
   const ok = validateListing(Object.assign({}, goodRental, { availableFrom: '2026-09-25' }));

@@ -879,6 +879,14 @@ function editListing(existing) {
         <label class="field" data-stay-only><span>Price per week — optional</span>
           <input name="weekly" type="number" min="0" step="1" value="${Number(draft.weekly) || ''}" placeholder="Derived if blank" />
         </label>
+        <label class="field" data-stay-only><span>Refundable deposit — optional</span>
+          <input name="deposit" type="number" min="0" step="1" value="${Number(draft.deposit) || ''}" placeholder="None if blank" />
+          <small class="hint">Held against the property and returned at the end of the stay. Shown on the listing so a guest can budget for it.</small>
+        </label>
+        <label class="field" data-stay-only><span>Booking fee — optional</span>
+          <input name="bookingFee" type="number" min="0" step="1" value="${Number(draft.bookingFee) || ''}" placeholder="None if blank" />
+          <small class="hint">Charged once when the booking is made, on top of the first payment.</small>
+        </label>
         <label class="field" data-stay-only><span>Minimum nights</span>
           <input name="minNights" type="number" min="1" max="365" step="1" value="${Number(draft.minNights) || 1}" />
         </label>
@@ -1001,7 +1009,7 @@ function editListing(existing) {
        * panel has to erase the fields, not empty them.
        */
       const stays = $$('[name="stays"]:checked', body).map((box) => box.value);
-      ['stays', 'nightly', 'weekly', 'minNights', 'availableFrom', 'availableTo'].forEach((key) => {
+      ['stays', 'nightly', 'weekly', 'minNights', 'availableFrom', 'availableTo', 'deposit', 'bookingFee'].forEach((key) => {
         delete updated[key];
       });
       if (stays.length && !land && updated.status === 'For rent') {
@@ -1014,6 +1022,12 @@ function editListing(existing) {
         if (minNights >= 1 && minNights <= 365) updated.minNights = minNights;
         if (value('availableFrom')) updated.availableFrom = value('availableFrom');
         if (value('availableTo')) updated.availableTo = value('availableTo');
+        // The two figures a guest cannot infer from a nightly rate. Deleted above
+        // with the rest, so clearing them here is what makes them go.
+        const deposit = Number(value('deposit'));
+        if (deposit > 0) updated.deposit = deposit;
+        const bookingFee = Number(value('bookingFee'));
+        if (bookingFee > 0) updated.bookingFee = bookingFee;
       }
 
       /*

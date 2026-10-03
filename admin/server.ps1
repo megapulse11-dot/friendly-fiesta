@@ -947,6 +947,19 @@ function Invoke-Api {
 
                 $to = [string](Get-FieldValue $listing 'availableTo')
                 if ($to -match '^\d{4}-\d{2}-\d{2}$') { $entry['availableTo'] = $to }
+
+                # What a guest owes beyond the nightly rate. Capped here as well
+                # as in the worker, so an approval cannot publish a figure the
+                # worker would have refused.
+                $deposit = [double](Get-FieldValue $listing 'deposit')
+                if ($deposit -gt 0 -and $deposit -le 50000000) {
+                    $entry['deposit'] = [int][Math]::Round($deposit)
+                }
+
+                $bookingFee = [double](Get-FieldValue $listing 'bookingFee')
+                if ($bookingFee -gt 0 -and $bookingFee -le 1000000) {
+                    $entry['bookingFee'] = [int][Math]::Round($bookingFee)
+                }
             }
 
             $data.listings = @($data.listings) + @($entry)

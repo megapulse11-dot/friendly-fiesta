@@ -228,6 +228,36 @@ export function validateListing(body) {
     if (weekly !== null) value.weekly = weekly;
     const minNights = wholeNumber(source.minNights, 1, 365, 0);
     if (minNights) value.minNights = minNights;
+
+    /*
+     * The two figures a guest cannot work out for themselves.
+     *
+     * A short stay is quoted per night, and the things that decide what a week
+     * actually costs are the ones nobody can infer from the nightly rate: the
+     * deposit held against the property, and the booking fee added to the first
+     * payment. Both are optional - plenty of owners take neither, and a listing
+     * that says nothing about them is not incomplete, just straightforward.
+     *
+     * Capped rather than merely range-checked. A deposit is a multiple of the
+     * stay, not an arbitrary sum, and an agent typing six zeroes into a money
+     * field should be told rather than published: at a million, a deposit is
+     * more than the property.
+     */
+    const deposit = priceValue(source.deposit);
+    if (deposit !== null) {
+      if (deposit > 50_000_000) {
+        return { ok: false, error: 'The deposit looks too large - check the figure.' };
+      }
+      value.deposit = deposit;
+    }
+
+    const bookingFee = priceValue(source.bookingFee);
+    if (bookingFee !== null) {
+      if (bookingFee > 1_000_000) {
+        return { ok: false, error: 'The booking fee looks too large - check the figure.' };
+      }
+      value.bookingFee = bookingFee;
+    }
   }
 
   const availableFrom = isoDate(source.availableFrom);
