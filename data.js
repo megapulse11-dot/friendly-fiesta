@@ -13,7 +13,7 @@ const NORTHWIND = {
                  "phone":  "+1 (555) 014-2200",
                  "footerNote":  "Independent estate agency for Harbor Point, Northgate and Elmwood. Selling, buying and renting since 1998.",
                  "copyright":  "© 2026 Northwind Realty. Sample content for demonstration.",
-                 "contentVersion":  "11"
+                 "contentVersion":  "12"
              },
     "listings":  [
                      {
@@ -404,34 +404,14 @@ const NORTHWIND = {
                                       ],
                          "description":  "A restored 1902 cottage with original beams, a wood stove, and an orchard running down to the water. Two bedrooms, one bathroom, and a river path at the end of the lane. Available furnished on a six or twelve-month term.",
                          "removedPhotos":  [
-                                               "assets/homes/property-05.svg",
-                                               "assets/homes/property-12.svg",
-                                               "assets/homes/property-08.svg",
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               "assets/homes/property_16_harbour_apartments_corner.jpg",
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null,
-                                               null
+
                                            ],
+                         "originalPrice":  120,
+                         "hot":  true,
+                         "hotUntil":  "2026-11-30",
+                         "cleaningFee":  55,
+                         "serviceFee":  40,
+                         "cancellationDays":  7,
                          "stays":  [
                                        "Nightly",
                                        "Weekly",
@@ -439,16 +419,10 @@ const NORTHWIND = {
                                    ],
                          "nightly":  95,
                          "weekly":  560,
-                         "originalPrice":  120,
                          "minNights":  2,
-                         "hot":  true,
-                         "hotUntil":  "2026-11-30",
                          "availableTo":  "2027-01-15",
                          "deposit":  300,
-                         "cleaningFee":  55,
-                         "serviceFee":  40,
-                         "bookingFee":  45,
-                         "cancellationDays":  7
+                         "bookingFee":  45
                      },
                      {
                          "id":  "p9",
