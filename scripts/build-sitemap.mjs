@@ -42,12 +42,18 @@ export const ORIGIN = 'https://megapulse11-dot.github.io/friendly-fiesta/';
 /**
  * How a listing is reached.
  *
- * `property.html?id=p1` is the JavaScript-driven page. Phase C of this work
- * pre-renders a real HTML file per listing at `property/p1.html`, and this is
- * the single constant to flip when that lands - which is the reason the URLs are
- * built here and nowhere else.
+ * Each listing has a pre-rendered page at property/<id>.html with its own title,
+ * description, canonical, Open Graph and JSON-LD already in the served HTML -
+ * written by scripts/build-property-pages.mjs. That file is the canonical address
+ * and the one the sitemap lists.
+ *
+ * property.html?id=<id> still works for any link that uses it, and app.js points
+ * its canonical at the pre-rendered page, so the two never compete for the same
+ * house. See updateListingMeta in app.js.
+ *
+ * This is the single constant to change if that scheme ever moves.
  */
-export const propertyUrl = (id) => `${ORIGIN}property.html?id=${id}`;
+export const propertyUrl = (id) => `${ORIGIN}property/${encodeURIComponent(id)}.html`;
 
 /** Pages that exist regardless of what is listed. Order is priority order. */
 const STATIC_PAGES = [

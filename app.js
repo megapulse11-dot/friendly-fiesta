@@ -2067,13 +2067,20 @@ const SITE_ORIGIN = 'https://megapulse11-dot.github.io/friendly-fiesta/';
  * Rewrites the head for whichever listing the ?id= resolved to, and injects a
  * schema.org block describing it.
  *
- * The reason this exists rather than a static <script type="application/ld+json">
- * in the HTML: property.html serves every listing on the site, so a static block
- * would describe one hardcoded house on all thirteen pages. Google reads it once
- * and concludes every listing on the site is that house.
+ * This exists for property.html, which serves every listing on the site from one
+ * file. It is why that page's raw HTML carries generic page copy: a static block
+ * there would describe one hardcoded house on all fourteen listings.
  *
- * The same applies to the title, the description and the canonical URL, which is
- * why those are updated here too rather than left as generic page copy.
+ * It is no longer the only way a listing page is published. Each listing also has
+ * a pre-rendered page at property/<id>.html with its own title, description,
+ * canonical, Open Graph, H1 and JSON-LD already in the served HTML - see
+ * scripts/build-property-pages.mjs. Those are what a crawler and a link preview
+ * actually read; this is what makes the ?id= URL agree with them.
+ *
+ * The canonical it writes is therefore the pre-rendered page's address, not this
+ * one. Two URLs can serve the same content, but only one of them may claim to be
+ * the canonical, and telling a crawler they are both is how a site ends up with
+ * its own pages competing against each other in results.
  *
  * JSON-LD is built as a JS object and stringified, never as a template literal of
  * hand-written JSON. A listing description containing a quote or a newline would
@@ -2081,7 +2088,7 @@ const SITE_ORIGIN = 'https://megapulse11-dot.github.io/friendly-fiesta/';
  * rather than reported.
  */
 function updateListingMeta(listing) {
-  const url = `${SITE_ORIGIN}property.html?id=${encodeURIComponent(listing.id)}`;
+  const url = `${SITE_ORIGIN}property/${encodeURIComponent(listing.id)}.html`;
   // The card shows a price formatted in the visitor's chosen currency, but a
   // meta description is read before any currency choice has been made, so this
   // quotes the listing's own base-currency figure rather than a converted one.

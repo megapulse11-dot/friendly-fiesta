@@ -98,6 +98,7 @@ $dataJsonPath = Join-Path $Root 'data.json'
 $dataJsPath = Join-Path $Root 'data.js'
 $sitemapScript = Join-Path $Root 'scripts\build-sitemap.mjs'
 $structuredDataScript = Join-Path $Root 'scripts\build-structured-data.mjs'
+$propertyPagesScript = Join-Path $Root 'scripts\build-property-pages.mjs'
 $adminFolder = Join-Path $Root 'admin'
 $photoFolder = Join-Path $Root 'assets\homes'
 $maxUploadBytes = 8MB
@@ -227,15 +228,20 @@ function Write-DataJs {
 # ---- the generated files ---------------------------------------------------
 <#
     Three artifacts are generated from data.json rather than maintained by hand:
-    data.js (the file the site loads), sitemap.xml (scripts/build-sitemap.mjs) and
-    the structured-data blocks in the page heads
-    (scripts/build-structured-data.mjs).
+    data.js (the file the site loads), sitemap.xml
+    (scripts/build-sitemap.mjs), the structured-data blocks in the page heads
+    (scripts/build-structured-data.mjs) and the pre-rendered listing pages in
+    property/ (scripts/build-property-pages.mjs).
 
-    All three are rewritten here, on every save and on every start, because a
+    All are rewritten here, on every save and on every start, because a
     hand-maintained copy of anything derived from the content drifts - and the
-    structured data is the sharpest case. A JSON-LD block typed into a page keeps
-    claiming to describe the agency after somebody has added an agent, and the
-    FAQ block would keep quoting answers the contact page no longer shows.
+    derived files are the sharpest case. A JSON-LD block typed into a page keeps
+    claiming to describe the agency after somebody has added an agent, the FAQ
+    block would keep quoting answers the contact page no longer shows, and a
+    listing page kept by hand would keep its old price.
+
+    Deleting a listing removes its pre-rendered page in the same pass, so a
+    withdrawn house does not stay published as a file nothing links to.
 
     Like the mobile sync, this is best-effort and needs Node. A machine without
     Node still runs the panel and still publishes a correct site; it just cannot
@@ -245,6 +251,7 @@ function Write-Generated {
     $generators = @(
         @{ Script = $sitemapScript; What = 'sitemap.xml' }
         @{ Script = $structuredDataScript; What = 'structured data' }
+        @{ Script = $propertyPagesScript; What = 'the pre-rendered listing pages' }
     )
 
     foreach ($generator in $generators) {

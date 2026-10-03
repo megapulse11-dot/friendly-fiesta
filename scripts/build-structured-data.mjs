@@ -192,10 +192,13 @@ function propertiesBlock(data) {
         '@type': 'ItemList',
         name: 'Homes and land for sale and to rent',
         numberOfItems: live.length,
+        // The pre-rendered addresses, matching the sitemap. Listing the ?id= URLs
+        // here would point structured data at the one form of each page that a
+        // crawler reads least of.
         itemListElement: live.map((listing, index) => ({
           '@type': 'ListItem',
           position: index + 1,
-          url: `${absolute('property.html')}?id=${encodeURIComponent(listing.id)}`,
+          url: `${ORIGIN}property/${encodeURIComponent(listing.id)}.html`,
           name: listing.title
         }))
       }

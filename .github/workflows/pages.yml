@@ -48,7 +48,7 @@ jobs:
           # Deliberately checks rather than regenerates. Publishing a file the
           # repository does not contain means the live site and the git history
           # disagree, and the next build would fail again for a different reason.
-          for script in build-sitemap.mjs build-structured-data.mjs; do
+          for script in build-sitemap.mjs build-structured-data.mjs build-property-pages.mjs; do
             if [ ! -f "scripts/$script" ]; then
               echo "::error::scripts/$script is missing - the generated files can no longer be verified."
               exit 1
@@ -86,6 +86,27 @@ jobs:
             fi
             cp "$file" "$site/"
           done
+
+          # The pre-rendered listing pages, one file per listing. property.html
+          # stays published too: it is what serves ?id= for any link that still
+          # uses it, and app.js points its canonical at these files so the two do
+          # not compete for the same house.
+          #
+          # Copied rather than generated here, because the generator has already
+          # run and been verified above - and because publishing a file the
+          # repository does not contain would mean the live site and the git
+          # history disagree, with the next build failing for a different reason.
+          if [ ! -d property ]; then
+            echo "::error::property/ is missing - the pre-rendered listing pages are gone."
+            exit 1
+          fi
+          count=$(find property -name '*.html' | wc -l)
+          echo "Pre-rendered listing pages: $count"
+          if [ "$count" -eq 0 ]; then
+            echo "::error::property/ has no pages - every listing would 404 for a crawler."
+            exit 1
+          fi
+          cp -R property "$site/"
 
           # Property images, including anything uploaded through the panel.
           cp -R assets "$site/"

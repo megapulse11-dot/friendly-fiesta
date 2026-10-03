@@ -122,33 +122,45 @@ data.js            All sample content: listings, agents, offices
 app.js             Shared behaviour, one guarded block per page
 assets/homes/      Placeholder property images (SVG)
 favicon.svg        Browser icon
-scripts/           Build-time generators (sitemap.xml)
+scripts/           Build-time generators (sitemap, structured data, listing pages)
+property/          The pre-rendered listing pages - generated, do not edit
 robots.txt         Crawler rules and the sitemap location
 sitemap.xml        Generated from data.json - do not edit by hand
 ```
 
-## robots.txt and sitemap.xml
+## Listing pages, robots.txt and sitemap.xml
 
-`sitemap.xml` is **generated from `data.json`** by `scripts/build-sitemap.mjs`:
+**Every listing has its own HTML file**, at `property/<id>.html`, carrying its own
+title, description, canonical URL, Open Graph tags, `<h1>` and JSON-LD — all in
+the raw HTML, readable without running any JavaScript. That is what a crawler
+sees and what a link preview in Slack or Facebook is given.
+
+`property.html?id=<id>` still works for any link that uses it, and `app.js` points
+its canonical at the pre-rendered page, so the two never compete for the same
+house.
+
+Four things in this repository are **generated from `data.json`** rather than
+maintained by hand, and you normally never need to run them:
 
 ```powershell
-node scripts/build-sitemap.mjs          # rebuild it
-node scripts/build-sitemap.mjs --check  # fail if it is out of date, write nothing
+node scripts/build-sitemap.mjs           # sitemap.xml
+node scripts/build-structured-data.mjs   # the JSON-LD blocks in the page heads
+node scripts/build-property-pages.mjs    # the files in property/
+node scripts/build-sitemap.mjs --check   # fail if out of date, write nothing
 ```
 
-You do not normally need to run the first one: the admin panel rebuilds it on
-every save and on every start, the same way it rebuilds `data.js`, and the
-Pages workflow runs `--check` so a stale sitemap fails the build instead of
-shipping. It matters if you edit `data.json` by hand — that is exactly the case
-the check exists to catch.
+The admin panel rebuilds all of them on every save and on every start, and the
+Pages workflow runs `--check` so a hand-edited `data.json` fails the build rather
+than publishing something stale. They matter if you edit `data.json` by hand —
+that is exactly the case the checks exist to catch.
 
-**Sold listings are excluded on purpose.** A sold house keeps its detail page, so
-somebody who followed an old link still gets an honest answer rather than a 404,
-but it is not advertised in the sitemap as available inventory. Withdrawn
-listings disappear from the sitemap entirely, which is the practical benefit of
-generating the file rather than maintaining it by hand.
+**Sold listings are excluded from the sitemap on purpose.** A sold house keeps its
+detail page, so somebody who followed an old link still gets an honest answer
+rather than a 404, but it is not advertised as available inventory. Withdrawn
+listings disappear from the sitemap *and* their pre-rendered page is deleted, so
+a withdrawn house does not stay published as a file nothing links to.
 
-The origin in that script must stay in step with `SITE_ORIGIN` in `app.js` and
+The origin in those scripts must stay in step with `SITE_ORIGIN` in `app.js` and
 the `Sitemap:` line in `robots.txt`. If you move the site to a domain of your
 own, change all three.
 
